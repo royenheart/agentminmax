@@ -1,0 +1,8 @@
+{"type":"session_start","session_id":"codex-demo-1","timestamp":"2026-06-16T01:00:00Z","agent":"codex","model":"gpt-5-codex","model_parameters":{"declared_size":"1T","context_window":1000000,"reasoning_effort":"high"}}
+{"type":"message","timestamp":"2026-06-16T01:00:05Z","role":"user","content":"Build an agent observability dashboard."}
+{"type":"token_usage","timestamp":"2026-06-16T01:01:00Z","input_tokens":1200,"output_tokens":800,"cached_input_tokens":200}
+{"type":"tool_call","timestamp":"2026-06-16T01:01:30Z","tool":"exec_command","duration_ms":300,"status":"ok"}
+{"type":"tool_call","timestamp":"2026-06-16T01:02:00Z","tool":"apply_patch","duration_ms":120,"status":"ok"}
+{"type":"benchmark_result","timestamp":"2026-06-16T01:03:00Z","benchmark":"swe-bench-verified","task_id":"swe-demo-1","completed":true,"quality_score":0.82,"tests_passed":12,"tests_total":13}
+{"type":"code_metric","timestamp":"2026-06-16T01:04:00Z","files_changed":4,"lines_added":120,"lines_deleted":20}
+{"type":"session_end","session_id":"codex-demo-1","timestamp":"2026-06-16T01:05:30Z","status":"completed"}

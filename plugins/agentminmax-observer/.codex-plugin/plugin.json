@@ -1,0 +1,27 @@
+{
+  "name": "agentminmax-observer",
+  "version": "0.1.0",
+  "description": "Complexity-aware observability for Codex and long-horizon agent workflows.",
+  "author": {
+    "name": "AgentMinMax contributors"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AgentMinMax Observer",
+    "shortDescription": "Inspect Codex sessions, tools, tokens, quality, and complexity.",
+    "longDescription": "AgentMinMax Observer provides a local skill and scripts for exporting agent traces into a quantitative dashboard for long-horizon project research.",
+    "developerName": "AgentMinMax contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Create an AgentMinMax dashboard for this Codex run.",
+      "Summarize recent agent session complexity.",
+      "Compare benchmark traces in AgentMinMax."
+    ],
+    "brandColor": "#147D8A"
+  }
+}

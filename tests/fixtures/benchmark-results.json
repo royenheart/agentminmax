@@ -1,0 +1,20 @@
+[
+  {
+    "benchmark": "osworld",
+    "task_id": "desktop-demo-1",
+    "completed": false,
+    "quality_score": 0.46,
+    "tests_passed": 3,
+    "tests_total": 8,
+    "duration_seconds": 900
+  },
+  {
+    "benchmark": "webarena",
+    "task_id": "web-demo-1",
+    "completed": true,
+    "quality_score": 0.74,
+    "tests_passed": 7,
+    "tests_total": 9,
+    "duration_seconds": 420
+  }
+]

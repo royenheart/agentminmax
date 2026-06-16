@@ -1,0 +1,27 @@
+[server]
+host = "127.0.0.1"
+port = 8765
+
+[[sources]]
+id = "local-codex"
+label = "Local Codex Sessions"
+kind = "jsonl_glob"
+path = "~/.codex/sessions/**/*.jsonl"
+enabled = true
+tags = ["daily", "codex"]
+
+[[sources]]
+id = "benchmark-runs"
+label = "Benchmark Run Directory"
+kind = "directory"
+path = "data/generated"
+enabled = true
+tags = ["benchmark"]
+
+[[sources]]
+id = "custom-runner"
+label = "Custom Benchmark Runner"
+kind = "command"
+command = ["python3", "scripts/run_benchmark.py", "--jsonl-out", "data/generated/custom.jsonl"]
+enabled = false
+tags = ["manual"]
