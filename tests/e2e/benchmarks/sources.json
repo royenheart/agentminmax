@@ -1,0 +1,23 @@
+{
+  "sources": [
+    {
+      "name": "human-eval",
+      "git": "https://github.com/openai/human-eval.git",
+      "ref": "master",
+      "path": "third_party/human-eval"
+    },
+    {
+      "name": "mbpp",
+      "git": "https://github.com/google-research/google-research.git",
+      "ref": "master",
+      "path": "third_party/google-research",
+      "subdir": "mbpp"
+    },
+    {
+      "name": "terminal-bench",
+      "git": "https://github.com/laude-institute/terminal-bench.git",
+      "ref": "main",
+      "path": "third_party/terminal-bench"
+    }
+  ]
+}

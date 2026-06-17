@@ -159,6 +159,40 @@ def test_native_codex_session_builds_interactive_trace_events():
     assert token_event.tokens["output"] == 300
 
 
+def test_native_codex_patch_apply_end_changes_update_code_metrics():
+    events = [
+        {
+            "timestamp": "2026-06-16T05:00:00.000Z",
+            "type": "session_meta",
+            "payload": {"id": "native-patch-1", "timestamp": "2026-06-16T05:00:00.000Z"},
+        },
+        {
+            "timestamp": "2026-06-16T05:00:10.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "patch_apply_end",
+                "status": "completed",
+                "success": True,
+                "call_id": "call_patch",
+                "changes": {
+                    "src/new.py": {"type": "add", "content": "def new_value():\n    return 1\n"},
+                    "src/existing.py": {
+                        "type": "update",
+                        "unified_diff": "@@ -1 +1 @@\n-old = 1\n+new = 2\n",
+                    },
+                },
+            },
+        },
+    ]
+
+    observation = build_observation(events)
+
+    session = observation.sessions[0]
+    assert session.code.files_changed == 2
+    assert session.code.lines_added == 3
+    assert session.code.lines_deleted == 1
+
+
 def test_native_codex_task_lifecycle_becomes_turn_duration_block():
     events = [
         {

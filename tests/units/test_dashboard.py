@@ -1,4 +1,5 @@
 import json
+import gzip
 from pathlib import Path
 
 from agentminmax.dashboard import export_dashboard_bundle
@@ -21,6 +22,68 @@ def test_export_dashboard_bundle_writes_static_panel_and_observation_data(tmp_pa
     assert payload["summary"]["session_count"] == 1
     assert payload["sessions"][0]["model"]["parameters"]["declared_size"] == "1T"
     assert "complexity" in payload["sessions"][0]
+
+
+def test_dashboard_frontend_assets_live_outside_python_module():
+    asset_root = Path("agentminmax/assets/dashboard")
+    assert (asset_root / "pages" / "index.html").exists()
+    assert (asset_root / "pages" / "trace.html").exists()
+    assert (asset_root / "styles" / "styles.css").exists()
+    assert (asset_root / "scripts" / "app.js").exists()
+    assert (asset_root / "scripts" / "perfetto-embed.js").exists()
+
+    dashboard_source = Path("agentminmax/dashboard.py").read_text(encoding="utf-8")
+    assert "INDEX_HTML =" not in dashboard_source
+    assert "APP_JS =" not in dashboard_source
+    assert "STYLES_CSS =" not in dashboard_source
+    assert "PERFETTO_EMBED_JS =" not in dashboard_source
+
+
+def test_dashboard_static_observation_is_slim_and_writes_lazy_detail_files(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-native-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
+    session = payload["sessions"][0]
+    assert "trace_events" not in session
+    assert "logs" not in session
+    assert "preview_events" not in session["trace"]
+    assert session["detail_json"] == "details/sessions/native-1.json"
+
+    detail_payload = json.loads((tmp_path / session["detail_json"]).read_text(encoding="utf-8"))
+    assert detail_payload["session"]["session_id"] == "native-1"
+    assert detail_payload["session"]["trace_events"]
+    assert detail_payload["session"]["logs"]
+    assert json.loads(gzip.decompress((tmp_path / "observations.json.gz").read_bytes()).decode("utf-8"))["summary"]
+    assert (tmp_path / f"{session['detail_json']}.gz").exists()
+    assert (tmp_path / f"{session['trace']['perfetto_json']}.gz").exists()
+
+
+def test_dashboard_static_benchmark_details_are_lazy_loaded(tmp_path):
+    trace = tmp_path / "benchmark.jsonl"
+    trace.write_text(
+        "\n".join(
+            [
+                '{"type":"session_start","session_id":"bench-session","timestamp":"2026-06-16T00:00:00Z","source_id":"local","run_id":"run-1"}',
+                '{"type":"benchmark_result","benchmark":"HumanEval","task_id":"task-1","completed":true,"quality_score":1.0,"tests_passed":3,"tests_total":3}',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    observation = build_observation(load_jsonl_events(trace))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
+    run = payload["benchmark_runs"][0]
+    assert run["detail_json"].startswith("details/benchmarks/")
+    assert "task_results" not in run
+
+    detail_payload = json.loads((tmp_path / run["detail_json"]).read_text(encoding="utf-8"))
+    assert detail_payload["benchmark_run"]["benchmark"] == run["benchmark"]
+    assert detail_payload["task_results"]
 
 
 def test_dashboard_bundle_includes_interactive_vendor_assets(tmp_path):
@@ -57,8 +120,9 @@ def test_dashboard_bundle_exports_trace_files_and_embedded_perfetto_host(tmp_pat
     observation_payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
     session = observation_payload["sessions"][0]
     assert session["trace"]["event_count"] >= 6
-    assert session["trace"]["preview_events"]
     assert session["trace"]["perfetto_json"] == "traces/sessions/native-1.json"
+    detail_payload = json.loads((tmp_path / session["detail_json"]).read_text(encoding="utf-8"))
+    assert detail_payload["session"]["trace"]["preview_events"]
 
     assert (tmp_path / "trace.html").exists()
     assert not (tmp_path / "trace.js").exists()
@@ -152,6 +216,27 @@ def test_dashboard_logs_use_scrollable_timeline_from_trace_events(tmp_path):
     assert "dedupeTimelineMessages" in app
     assert "event.category === \"tokens\"" in app
     assert "tokenCostHtml" in app
+
+
+def test_dashboard_analysis_cards_show_loading_spinner_and_overlay(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-native-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    styles = (tmp_path / "styles.css").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+
+    assert ".analysis-card.is-loading" in styles
+    assert ".analysis-card.is-loading::before" in styles
+    assert ".analysis-card.is-loading h3::after" in styles
+    assert "@keyframes analysis-card-spin" in styles
+    assert "animation: analysis-card-spin" in styles
+
+    assert 'setAnalysisLoading("session-analysis", true)' in app
+    assert 'setAnalysisLoading("session-analysis", false)' in app
+    assert 'setAnalysisLoading("benchmark-analysis", true)' in app
+    assert 'setAnalysisLoading("benchmark-analysis", false)' in app
+    assert "function setAnalysisLoading(panelId, loading)" in app
 
 
 def test_dashboard_information_architecture_distinguishes_sessions_from_benchmarks(tmp_path):

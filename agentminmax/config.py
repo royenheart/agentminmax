@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 
-SourceKind = Literal["jsonl_glob", "directory", "command", "codex_logs"]
+SourceKind = Literal["jsonl_glob", "directory", "command", "codex_logs", "codex_home", "runs"]
 
 
 @dataclass(slots=True)
@@ -40,7 +40,7 @@ class AgentMinMaxConfig:
 def load_config(path: str | Path) -> AgentMinMaxConfig:
     config_path = Path(path)
     if not config_path.exists():
-        return AgentMinMaxConfig()
+        return default_config()
     payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
     server_payload = payload.get("server", {})
     server = ServerConfig(
@@ -49,6 +49,29 @@ def load_config(path: str | Path) -> AgentMinMaxConfig:
     )
     sources = [source_from_dict(item) for item in payload.get("sources", [])]
     return AgentMinMaxConfig(server=server, sources=sources)
+
+
+def default_config() -> AgentMinMaxConfig:
+    return AgentMinMaxConfig(
+        sources=[
+            BenchmarkSource(
+                id="local-codex",
+                label="Local Codex Sessions",
+                kind="codex_home",
+                path="$CODEX_HOME",
+                enabled=True,
+                tags=["daily", "codex"],
+            ),
+            BenchmarkSource(
+                id="benchmark-runs",
+                label="Benchmark Run Directory",
+                kind="runs",
+                path="runs",
+                enabled=True,
+                tags=["benchmark"],
+            ),
+        ]
+    )
 
 
 def save_config(config: AgentMinMaxConfig, path: str | Path) -> None:
@@ -71,7 +94,7 @@ def source_from_dict(payload: dict) -> BenchmarkSource:
     if not source_id:
         raise ValueError("source id must be non-empty")
     kind = str(payload.get("kind", "jsonl_glob"))
-    if kind not in {"jsonl_glob", "directory", "command", "codex_logs"}:
+    if kind not in {"jsonl_glob", "directory", "command", "codex_logs", "codex_home", "runs"}:
         raise ValueError(f"unsupported source kind: {kind}")
     command = payload.get("command")
     return BenchmarkSource(

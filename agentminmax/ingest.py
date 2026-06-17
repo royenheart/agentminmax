@@ -128,6 +128,10 @@ def normalize_events(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 )
             elif payload_type in {"task_started", "task_complete", "patch_apply_end"}:
                 normalized.append(_codex_event_msg_trace(timestamp, payload))
+                if payload_type == "patch_apply_end":
+                    metric = _codex_patch_code_metric(timestamp, payload, event_source_id)
+                    if metric is not None:
+                        normalized.append(metric)
         elif event_type == "response_item":
             payload_type = str(payload.get("type", ""))
             if payload_type in {"function_call", "custom_tool_call"}:
@@ -266,7 +270,8 @@ def build_observation(
                             existing.model.parameters[key] = value
                 if event.get("source_id"):
                     existing.source_id = str(event.get("source_id"))
-                existing.run_id = str(event.get("run_id", existing.run_id))
+                if event.get("run_id"):
+                    existing.run_id = str(event["run_id"])
                 existing.start_time = _optional_timestamp(event) or existing.start_time
                 current = existing
                 continue
@@ -625,6 +630,75 @@ def _codex_event_msg_trace(timestamp: str | None, payload: dict[str, Any]) -> di
         args={key: value for key, value in args.items() if value is not None},
         raw_type=payload_type,
     )
+
+
+def _codex_patch_code_metric(
+    timestamp: str | None,
+    payload: dict[str, Any],
+    source_id: str | None,
+) -> dict[str, Any] | None:
+    if payload.get("success") is False:
+        return None
+
+    files_changed = 0
+    lines_added = 0
+    lines_deleted = 0
+    changes = payload.get("changes")
+
+    if isinstance(changes, dict):
+        for change in changes.values():
+            if not isinstance(change, dict):
+                continue
+            files_changed += 1
+            change_type = str(change.get("type", ""))
+            unified_diff = change.get("unified_diff")
+            content = change.get("content")
+            if isinstance(unified_diff, str):
+                added, deleted = _unified_diff_line_counts(unified_diff)
+                lines_added += added
+                lines_deleted += deleted
+            elif isinstance(content, str):
+                line_count = _content_line_count(content)
+                if change_type == "delete":
+                    lines_deleted += line_count
+                elif change_type == "add":
+                    lines_added += line_count
+    elif payload.get("path"):
+        files_changed = 1
+
+    if files_changed == 0 and lines_added == 0 and lines_deleted == 0:
+        return None
+
+    event = {
+        "type": "code_metric",
+        "timestamp": timestamp,
+        "files_changed": files_changed,
+        "lines_added": lines_added,
+        "lines_deleted": lines_deleted,
+        "call_id": payload.get("call_id"),
+    }
+    if source_id is not None:
+        event["source_id"] = source_id
+    return event
+
+
+def _unified_diff_line_counts(diff: str) -> tuple[int, int]:
+    added = 0
+    deleted = 0
+    for line in diff.splitlines():
+        if line.startswith("+++") or line.startswith("---"):
+            continue
+        if line.startswith("+"):
+            added += 1
+        elif line.startswith("-"):
+            deleted += 1
+    return added, deleted
+
+
+def _content_line_count(content: str) -> int:
+    if not content:
+        return 0
+    return len(content.splitlines())
 
 
 def _build_trace_event(event: dict[str, Any], index: int) -> TraceEvent:

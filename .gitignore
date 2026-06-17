@@ -9,5 +9,7 @@ build/
 data/
 data/generated/
 dashboard-dist/
+runs/
 screenshots/
 docs/superpowers/
+tests/e2e/benchmarks/third_party/

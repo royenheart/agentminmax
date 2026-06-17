@@ -22,3 +22,11 @@ pythonpath = ["."]
 
 [tool.setuptools.packages.find]
 include = ["agentminmax*"]
+
+[tool.setuptools.package-data]
+agentminmax = [
+  "assets/dashboard/pages/*",
+  "assets/dashboard/scripts/*",
+  "assets/dashboard/styles/*",
+  "assets/vendor/*",
+]

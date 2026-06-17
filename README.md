@@ -14,8 +14,9 @@ It provides:
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m agentminmax demo --out dashboard-dist
-.venv/bin/python -m agentminmax dashboard --bundle dashboard-dist --port 8765
+CODEX_HOME=${CODEX_HOME:-$HOME/.codex} .venv/bin/python experiments.py --dry-run
+cp agentminmax.toml.example agentminmax.toml
+.venv/bin/python -m agentminmax serve --config agentminmax.toml --bundle dashboard-dist --port 8765
 ```
 
 Open `http://127.0.0.1:8765/` to view the panel.
@@ -27,7 +28,7 @@ cp agentminmax.toml.example agentminmax.toml
 .venv/bin/python -m agentminmax serve --config agentminmax.toml --bundle dashboard-dist --port 8765
 ```
 
-The dynamic server adds local `/api/*` endpoints. The browser can refresh configured sources or run configured command sources, but it cannot submit arbitrary commands.
+The dynamic server adds local `/api/*` endpoints. By default, it reads Codex sessions from `$CODEX_HOME` and experiment benchmark mappings from `runs/`.
 
 ## Trace Input
 
@@ -45,16 +46,16 @@ AgentMinMax accepts two JSONL forms:
 {"type":"session_end","timestamp":"2026-06-16T01:05:30Z","status":"completed"}
 ```
 
-Summarize it:
+Summarize the unit fixture:
 
 ```bash
-.venv/bin/python -m agentminmax summarize tests/fixtures/codex-session.jsonl
+.venv/bin/python -m agentminmax summarize tests/units/fixtures/codex-session.jsonl
 ```
 
 Export a dashboard bundle:
 
 ```bash
-.venv/bin/python -m agentminmax collect tests/fixtures/codex-session.jsonl --out dashboard-dist
+.venv/bin/python -m agentminmax collect tests/units/fixtures/codex-session.jsonl --out dashboard-dist
 ```
 
 Scan common Codex locations:
@@ -70,15 +71,35 @@ Run a preconfigured benchmark source:
 .venv/bin/python -m agentminmax run-benchmark custom-runner --config agentminmax.toml --bundle dashboard-dist
 ```
 
+Run the built-in six-task live experiment:
+
+```bash
+CODEX_HOME=$HOME/.codex .venv/bin/python experiments.py
+```
+
+The experiment writes task workspaces, `results.jsonl`, and `session_benchmark_map.json` under `runs/<experiment-id>/`.
+
 ## Dynamic Sources
 
-`agentminmax.toml` defines where sessions and benchmark outputs live. Benchmark results are aggregated from sessions; they are not a separate primary data stream.
+`agentminmax.toml` defines where sessions and benchmark outputs live. Agent sessions and benchmark outcomes are separate streams: Codex sessions come from `$CODEX_HOME`, while benchmark outcomes and the session-to-task map come from `runs/`.
 
 Supported source kinds:
 
-- `jsonl_glob`: reads matching JSONL traces, including native Codex session logs.
+- `codex_home`: reads native Codex JSONL sessions below `$CODEX_HOME/sessions`.
+- `runs`: reads `runs/**/session_benchmark_map.json` and adjacent `results.jsonl`.
+- `jsonl_glob`: reads matching JSONL traces.
 - `directory`: recursively reads `.jsonl` files below a directory.
 - `command`: executes the configured command and records a job result, then refreshes observations from configured sources.
+
+## Tests and Benchmarks
+
+Unit tests live under `tests/units`. The files in `tests/units/fixtures` are small deterministic parser fixtures only.
+
+End-to-end benchmark management lives under `tests/e2e/benchmarks`. Third-party benchmark collections are fetched into `tests/e2e/benchmarks/third_party`, which is ignored by git:
+
+```bash
+.venv/bin/python tests/e2e/benchmarks/fetch_benchmarks.py
+```
 
 The dashboard uses Apache ECharts for hoverable charts and Tabulator for sortable/filterable session and benchmark tables. Static exports still work because the frontend assets are vendored into the bundle.
 

@@ -262,3 +262,12 @@ def test_disabled_source_returns_no_events(tmp_path):
     source = BenchmarkSource(id="off", label="Off", kind="jsonl_glob", path=str(trace), enabled=False)
 
     assert load_source_events(source) == []
+
+
+def test_missing_config_defaults_to_codex_home_and_runs_sources(tmp_path):
+    config = load_config(tmp_path / "missing.toml")
+
+    assert [(source.id, source.kind, source.path) for source in config.sources] == [
+        ("local-codex", "codex_home", "$CODEX_HOME"),
+        ("benchmark-runs", "runs", "runs"),
+    ]

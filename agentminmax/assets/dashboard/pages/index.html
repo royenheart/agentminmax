@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgentMinMax Observer</title>
+  <link rel="stylesheet" href="vendor/tabulator.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>AgentMinMax Observer</h1>
+      <p>Dynamic trace panel for Codex sessions, session-derived benchmarks, and long-horizon agent work.</p>
+    </div>
+    <div class="top-actions">
+      <button class="tool-button" id="refresh-all" type="button">Refresh</button>
+      <div class="status-pill" id="status">Loading</div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="metric-grid" id="metric-grid" aria-label="Summary metrics"></section>
+
+    <section class="panel wide source-panel">
+      <div class="panel-head">
+        <h2>Sources</h2>
+        <span>session observation inputs and actions</span>
+      </div>
+      <div id="source-list" class="source-list"></div>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-head">
+        <h2>Sessions</h2>
+        <span>select a row to open analysis panels</span>
+      </div>
+      <div id="session-table"></div>
+      <div id="session-analysis" class="analysis-grid is-hidden" aria-live="polite" aria-hidden="true">
+        <div class="analysis-head">
+          <h2>Session Analysis</h2>
+          <span id="session-analysis-context">select a session</span>
+        </div>
+        <article class="analysis-card wide">
+          <h3>Overview</h3>
+          <div id="session-overview-metrics" class="detail-metrics"></div>
+        </article>
+        <article class="analysis-card wide">
+          <h3>Token Growth</h3>
+          <div id="session-token-growth-chart" class="chart"></div>
+        </article>
+        <article class="analysis-card">
+          <h3>Complexity</h3>
+          <div id="session-complexity-chart" class="chart compact"></div>
+        </article>
+        <article class="analysis-card">
+          <h3>Tokens And Tools</h3>
+          <div id="session-token-tool-chart" class="chart compact"></div>
+        </article>
+        <article class="analysis-card">
+          <h3>Code Changes</h3>
+          <div id="session-code-metrics" class="detail-metrics"></div>
+        </article>
+        <article class="analysis-card">
+          <h3>Related Benchmarks</h3>
+          <div id="session-related-benchmarks" class="detail-chip-list"></div>
+        </article>
+        <article class="analysis-card wide">
+          <h3>Trace Preview</h3>
+          <div id="session-trace-links" class="trace-links"></div>
+          <div class="perfetto-panel">
+            <iframe id="session-perfetto-frame" class="perfetto-frame" src="https://ui.perfetto.dev/#!/?mode=embedded" title="Session Perfetto trace"></iframe>
+            <div class="perfetto-status" id="session-perfetto-status">Select a session trace</div>
+          </div>
+        </article>
+        <article class="analysis-card wide">
+          <h3>Logs</h3>
+          <div id="session-log-list" class="log-timeline"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel wide source-panel">
+      <div class="panel-head">
+        <h2>Benchmark Sources</h2>
+        <span>run context from sources and observed suites</span>
+      </div>
+      <div id="benchmark-source-list" class="source-list"></div>
+    </section>
+
+    <section class="panel wide">
+      <div class="panel-head">
+        <h2>Benchmarks</h2>
+        <span>select a row to open analysis panels</span>
+      </div>
+      <div id="benchmark-table"></div>
+      <div id="benchmark-analysis" class="analysis-grid is-hidden" aria-live="polite" aria-hidden="true">
+        <div class="analysis-head">
+          <h2>Benchmark Analysis</h2>
+          <span id="benchmark-analysis-context">select a benchmark</span>
+        </div>
+        <article class="analysis-card wide">
+          <h3>Aggregate Metrics</h3>
+          <div id="benchmark-aggregate-metrics" class="detail-metrics"></div>
+        </article>
+        <article class="analysis-card wide">
+          <h3>Trace Preview</h3>
+          <div id="benchmark-trace-links" class="trace-links"></div>
+          <div class="perfetto-panel">
+            <iframe id="benchmark-perfetto-frame" class="perfetto-frame" src="https://ui.perfetto.dev/#!/?mode=embedded" title="Benchmark Perfetto trace"></iframe>
+            <div class="perfetto-status" id="benchmark-perfetto-status">Select a benchmark trace</div>
+          </div>
+        </article>
+        <article class="analysis-card">
+          <h3>Quality / Completion</h3>
+          <div id="benchmark-quality-chart" class="chart compact"></div>
+        </article>
+        <article class="analysis-card">
+          <h3>Cost Breakdown</h3>
+          <div id="benchmark-cost-chart" class="chart compact"></div>
+        </article>
+        <article class="analysis-card">
+          <h3>Contributing Sessions</h3>
+          <div id="benchmark-session-list" class="detail-chip-list"></div>
+        </article>
+        <article class="analysis-card">
+          <h3>Task Results</h3>
+          <div id="benchmark-task-results" class="detail-task-list"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="vendor/echarts.min.js"></script>
+  <script src="vendor/tabulator.min.js"></script>
+  <script src="perfetto-embed.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

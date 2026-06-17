@@ -5,16 +5,16 @@ port = 8765
 [[sources]]
 id = "local-codex"
 label = "Local Codex Sessions"
-kind = "jsonl_glob"
-path = "~/.codex/sessions/**/*.jsonl"
+kind = "codex_home"
+path = "$CODEX_HOME"
 enabled = true
 tags = ["daily", "codex"]
 
 [[sources]]
 id = "benchmark-runs"
 label = "Benchmark Run Directory"
-kind = "directory"
-path = "data/generated"
+kind = "runs"
+path = "runs"
 enabled = true
 tags = ["benchmark"]
 
@@ -30,6 +30,6 @@ tags = ["codex", "trace"]
 id = "custom-runner"
 label = "Custom Benchmark Runner"
 kind = "command"
-command = ["python3", "scripts/run_benchmark.py", "--jsonl-out", "data/generated/custom.jsonl"]
+command = ["python3", "experiments.py"]
 enabled = false
 tags = ["manual"]

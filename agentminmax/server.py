@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import gzip
 import json
 import subprocess
 import time
 from dataclasses import asdict, dataclass, field
 from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from agentminmax.config import AgentMinMaxConfig, BenchmarkSource, load_config, save_config, source_from_dict
-from agentminmax.dashboard import export_dashboard_bundle
+from agentminmax.dashboard import GzipStaticHandler, export_dashboard_bundle
 from agentminmax.ingest import build_observation
 from agentminmax.models import Observation
+from agentminmax.payloads import benchmark_run_detail_payload, observation_payload, session_detail_payload
 from agentminmax.sources import load_source_events
+from agentminmax.traces import benchmark_sessions
 
 
 @dataclass(slots=True)
@@ -113,10 +116,27 @@ class ObservationServer:
 
     def handle_api(self, method: str, path: str, body: bytes) -> tuple[int, dict]:
         parsed = urlparse(path)
-        parts = [part for part in parsed.path.strip("/").split("/") if part]
+        parts = [unquote(part) for part in parsed.path.strip("/").split("/") if part]
         try:
             if method == "GET" and parsed.path == "/api/observation":
-                return 200, self.observation.to_dict()
+                return 200, observation_payload(self.observation)
+            if method == "GET" and len(parts) == 3 and parts[:2] == ["api", "sessions"]:
+                session = next((item for item in self.observation.sessions if item.session_id == parts[2]), None)
+                if session is None:
+                    return 404, self._error("session_not_found", f"No session exists with id '{parts[2]}'.", 404)
+                return 200, session_detail_payload(session)
+            if method == "GET" and len(parts) == 5 and parts[:2] == ["api", "benchmarks"]:
+                run = next(
+                    (
+                        item
+                        for item in self.observation.benchmark_runs
+                        if item.source_id == parts[2] and item.benchmark == parts[3] and item.run_id == parts[4]
+                    ),
+                    None,
+                )
+                if run is None:
+                    return 404, self._error("benchmark_not_found", "No benchmark run matches the requested key.", 404)
+                return 200, benchmark_run_detail_payload(run, benchmark_sessions(self.observation.sessions, run))
             if method == "GET" and parsed.path == "/api/sources":
                 return 200, {"sources": self._sources_payload()}
             if method == "POST" and parsed.path == "/api/sources":
@@ -170,14 +190,14 @@ class ObservationServer:
 def serve_dynamic(config_path: str | Path, bundle_dir: str | Path, host: str, port: int) -> None:
     app = ObservationServer(config_path=config_path, bundle_dir=bundle_dir)
 
-    class Handler(SimpleHTTPRequestHandler):
+    class Handler(GzipStaticHandler):
         def _handle_api(self) -> None:
             body = self.rfile.read(int(self.headers.get("Content-Length", "0") or 0))
             status, payload = app.handle_api(self.command, self.path, body)
-            encoded = json.dumps(payload, indent=2).encode("utf-8")
+            encoded, headers = encode_json_response(payload, self.headers.get("Accept-Encoding", ""))
             self.send_response(status)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(encoded)))
+            for header, value in headers.items():
+                self.send_header(header, value)
             self.end_headers()
             self.wfile.write(encoded)
 
@@ -197,3 +217,16 @@ def serve_dynamic(config_path: str | Path, bundle_dir: str | Path, host: str, po
     server = ThreadingHTTPServer((host, port), handler)
     print(f"AgentMinMax dynamic dashboard serving at http://{host}:{port}/")
     server.serve_forever()
+
+
+def encode_json_response(payload: dict, accept_encoding: str = "") -> tuple[bytes, dict[str, str]]:
+    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Vary": "Accept-Encoding",
+    }
+    if "gzip" in {item.strip().split(";", 1)[0] for item in accept_encoding.lower().split(",")} and len(encoded) > 1024:
+        encoded = gzip.compress(encoded, compresslevel=3)
+        headers["Content-Encoding"] = "gzip"
+    headers["Content-Length"] = str(len(encoded))
+    return encoded, headers

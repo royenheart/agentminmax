@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgentMinMax Perfetto Trace</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="trace-page" data-perfetto-page="true">
+  <header class="topbar">
+    <div>
+      <h1>Perfetto Trace</h1>
+      <p>Embedded Perfetto UI for Codex session and benchmark traces.</p>
+    </div>
+    <div class="top-actions">
+      <a class="tool-button" id="download-trace" href="#">Download Perfetto JSON</a>
+      <a class="tool-button" href="index.html">Dashboard</a>
+      <div class="status-pill" id="status">Loading</div>
+    </div>
+  </header>
+  <main class="perfetto-fullscreen">
+    <iframe id="perfetto-frame" class="perfetto-frame full" src="https://ui.perfetto.dev/#!/?mode=embedded" title="Perfetto trace viewer"></iframe>
+  </main>
+  <script src="perfetto-embed.js"></script>
+</body>
+</html>
