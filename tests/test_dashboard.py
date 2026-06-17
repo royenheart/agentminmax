@@ -132,6 +132,28 @@ def test_dashboard_places_trace_preview_directly_above_logs(tmp_path):
     assert related_index < trace_index < logs_index
 
 
+def test_dashboard_logs_use_scrollable_timeline_from_trace_events(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-native-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    styles = (tmp_path / "styles.css").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+
+    assert 'id="session-log-list" class="log-timeline"' in html
+    assert ".log-timeline" in styles
+    assert "overflow-y: auto" in styles
+    assert ".log-rail" in styles
+    assert ".log-token-chips" in styles
+    assert "logTimeline(session)" in app
+    assert "timelineEntries(session)" in app
+    assert "session.trace_events || []" in app
+    assert "dedupeTimelineMessages" in app
+    assert "event.category === \"tokens\"" in app
+    assert "tokenCostHtml" in app
+
+
 def test_dashboard_information_architecture_distinguishes_sessions_from_benchmarks(tmp_path):
     observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
 

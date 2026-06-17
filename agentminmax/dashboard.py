@@ -118,7 +118,7 @@ INDEX_HTML = """<!doctype html>
         </article>
         <article class="analysis-card wide">
           <h3>Logs</h3>
-          <div id="session-log-list" class="log-list"></div>
+          <div id="session-log-list" class="log-timeline"></div>
         </article>
       </div>
     </section>
@@ -547,7 +547,6 @@ canvas {
 }
 
 .result-list,
-.log-list,
 .detail-list,
 .detail-task-list,
 .detail-chip-list {
@@ -555,8 +554,7 @@ canvas {
   gap: 10px;
 }
 
-.result-item,
-.log-item {
+.result-item {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 6px 12px;
@@ -564,21 +562,166 @@ canvas {
   border-bottom: 1px solid #edf0f4;
 }
 
-.result-item:last-child,
-.log-item:last-child {
+.result-item:last-child {
   border-bottom: 0;
 }
 
-.result-item strong,
-.log-item strong {
+.result-item strong {
   font-size: 14px;
 }
 
 .result-item span,
-.log-item span,
 .empty {
   color: var(--muted);
   font-size: 12px;
+}
+
+.log-timeline {
+  position: relative;
+  display: grid;
+  gap: 0;
+  max-height: 560px;
+  overflow-y: auto;
+  padding: 4px 12px 4px 0;
+  scrollbar-gutter: stable;
+}
+
+.log-entry {
+  display: grid;
+  grid-template-columns: 96px 22px minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+
+.log-time {
+  padding-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.log-rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.log-rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #dbe2ea;
+}
+
+.log-dot {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  margin-top: 13px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--blue);
+  box-shadow: 0 0 0 1px #a9b8c8;
+}
+
+.log-entry.message .log-dot {
+  background: var(--green);
+}
+
+.log-entry.tool .log-dot,
+.log-entry.mcp .log-dot {
+  background: #7c3aed;
+}
+
+.log-entry.tokens .log-dot {
+  background: #d97706;
+}
+
+.log-entry.error .log-dot {
+  background: var(--red);
+}
+
+.log-body {
+  min-width: 0;
+  padding: 8px 0 14px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.log-entry:last-child .log-body {
+  border-bottom: 0;
+}
+
+.log-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.log-title {
+  min-width: 0;
+}
+
+.log-title strong,
+.log-title span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-title strong {
+  font-size: 13px;
+}
+
+.log-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.log-token-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.log-token-chips span {
+  padding: 3px 7px;
+  border: 1px solid #e5eaf0;
+  border-radius: 999px;
+  color: #4b5563;
+  background: #f8fafc;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-detail {
+  margin-top: 7px;
+  color: #374151;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.log-output {
+  max-height: 180px;
+  margin: 8px 0 0;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #edf0f4;
+  border-radius: 6px;
+  color: #1f2937;
+  background: #f9fafb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .result-item.complete span:nth-child(3) {
@@ -589,10 +732,6 @@ canvas {
 .result-item.incomplete span:nth-child(3) {
   color: var(--red);
   font-weight: 700;
-}
-
-.log-item {
-  grid-template-columns: minmax(0, 180px) 1fr;
 }
 
 .detail-grid {
@@ -738,6 +877,21 @@ th {
   .detail-chip-list,
   .detail-task {
     grid-template-columns: 1fr;
+  }
+
+  .log-entry {
+    grid-template-columns: 72px 18px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .log-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .log-token-chips {
+    justify-content: flex-start;
+    min-width: 0;
   }
 
   h1 {
@@ -1095,7 +1249,7 @@ function renderSessionAnalysis(session) {
     ["Recommended Grain", complexity.recommended_grain || "unknown"]
   ]);
   document.getElementById("session-related-benchmarks").innerHTML = relatedBenchmarkList(session);
-  document.getElementById("session-log-list").innerHTML = logDetailList(session.logs || []);
+  document.getElementById("session-log-list").innerHTML = logTimeline(session);
   document.getElementById("session-trace-links").innerHTML = renderTraceLinks(session.trace, `Session ${session.session_id}`);
   AgentMinMaxPerfetto.render({
     frameId: "session-perfetto-frame",
@@ -1218,14 +1372,128 @@ function benchmarkResultList(results, includeSession = false) {
   }).join("")}</div>`;
 }
 
-function logDetailList(logs) {
-  if (!logs.length) return '<p class="empty">No logs captured.</p>';
-  return `<div class="detail-list">${logs.slice(-8).map((line) => `
-    <div class="log-item">
-      <strong>log</strong>
-      <span>${escapeHtml(line)}</span>
+function logTimeline(session) {
+  const entries = timelineEntries(session);
+  if (!entries.length) return '<p class="empty">No logs captured.</p>';
+  return entries.map((entry) => {
+    const detail = entry.detail ? `<div class="log-detail">${escapeHtml(shortLogText(entry.detail))}</div>` : "";
+    const output = entry.output ? `<pre class="log-output">${escapeHtml(shortLogText(entry.output, 2200))}</pre>` : "";
+    return `
+    <div class="log-entry ${escapeHtml(entry.kind)}${entry.status === "error" ? " error" : ""}">
+      <div class="log-time">${escapeHtml(entry.time)}</div>
+      <div class="log-rail"><span class="log-dot"></span></div>
+      <div class="log-body">
+        <div class="log-row">
+          <div class="log-title">
+            <strong>${escapeHtml(entry.title)}</strong>
+            <span>${escapeHtml(entry.subtitle)}</span>
+          </div>
+          ${tokenCostHtml(entry.tokens)}
+        </div>
+        ${detail}
+        ${output}
+      </div>
     </div>
-  `).join("")}</div>`;
+  `;
+  }).join("");
+}
+
+function timelineEntries(session) {
+  const traceEvents = (session.trace_events || [])
+    .slice()
+    .sort((left, right) => timestampMs(left.timestamp) - timestampMs(right.timestamp));
+  const entries = [];
+  let currentTokens = null;
+
+  traceEvents.forEach((event) => {
+    if (event.category === "tokens") currentTokens = event.tokens || currentTokens;
+    const entry = timelineEntry(event, currentTokens);
+    if (entry) entries.push(entry);
+  });
+
+  const deduped = dedupeTimelineMessages(entries);
+  if (deduped.length) return deduped;
+
+  return (session.logs || []).map((line, index) => ({
+    kind: "message",
+    timestampMs: index,
+    time: `#${index + 1}`,
+    title: "log",
+    subtitle: "session log",
+    detail: line,
+    output: "",
+    status: "unknown",
+    tokens: null
+  }));
+}
+
+function timelineEntry(event, currentTokens) {
+  const kind = timelineKind(event);
+  const ms = timestampMs(event.timestamp);
+  const summary = event.summary || event.name || event.category || "event";
+  const rawDetail = event.detail || "";
+  const rawOutput = event.output || "";
+  const detail = rawDetail && rawDetail !== rawOutput ? rawDetail : summary;
+  const output = rawOutput && rawOutput !== detail ? rawOutput : "";
+  const duration = event.duration_ms ? ` · ${fmt.format(event.duration_ms)}ms` : "";
+  return {
+    kind,
+    timestampMs: ms,
+    time: eventTimeLabel(event),
+    title: event.name || event.category || "event",
+    subtitle: `${event.category || "event"} · ${event.status || "unknown"}${duration}`,
+    detail,
+    output,
+    status: event.status || "unknown",
+    tokens: event.category === "tokens" ? event.tokens : currentTokens
+  };
+}
+
+function timelineKind(event) {
+  if (event.status === "error") return "error";
+  if (event.lane === "MCP Calls") return "mcp";
+  if (event.category === "tool") return "tool";
+  if (event.category === "message") return "message";
+  if (event.category === "tokens") return "tokens";
+  return event.category || "event";
+}
+
+function dedupeTimelineMessages(entries) {
+  const seen = new Set();
+  return entries.filter((entry) => {
+    if (entry.kind !== "message") return true;
+    const bucket = Number.isFinite(entry.timestampMs) ? Math.floor(entry.timestampMs / 1000) : entry.time;
+    const key = `${bucket}:${entry.detail || entry.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function eventTimeLabel(event) {
+  const ms = timestampMs(event.timestamp);
+  if (!Number.isFinite(ms)) return event.event_id || "time";
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function tokenCostHtml(tokens) {
+  if (!tokens) return '<div class="log-token-chips"><span>tokens -</span></div>';
+  const input = Number(tokens.input || 0);
+  const output = Number(tokens.output || 0);
+  const cached = Number(tokens.cached_input || 0);
+  const total = Number(tokens.total || input + output);
+  return `<div class="log-token-chips">
+    <span>in ${fmt.format(input)}</span>
+    <span>out ${fmt.format(output)}</span>
+    <span>cached ${fmt.format(cached)}</span>
+    <span>total ${fmt.format(total)}</span>
+  </div>`;
+}
+
+function shortLogText(value, limit = 1400) {
+  const text = String(value ?? "");
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}... truncated ${fmt.format(text.length - limit)} chars`;
 }
 
 function sessionChipList(sessions) {
