@@ -7,6 +7,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from agentminmax.models import Observation
+from agentminmax.traces import export_observation_traces
 
 
 VENDOR_ASSET_DIR = Path(__file__).parent / "assets" / "vendor"
@@ -16,10 +17,16 @@ VENDOR_FILES = ("echarts.min.js", "tabulator.min.js", "tabulator.min.css")
 def export_dashboard_bundle(observation: Observation, out_dir: str | Path) -> Path:
     target = Path(out_dir)
     target.mkdir(parents=True, exist_ok=True)
+    export_observation_traces(observation, target)
+    stale_trace_js = target / "trace.js"
+    if stale_trace_js.exists():
+        stale_trace_js.unlink()
     (target / "observations.json").write_text(json.dumps(observation.to_dict(), indent=2), encoding="utf-8")
     (target / "index.html").write_text(INDEX_HTML, encoding="utf-8")
+    (target / "trace.html").write_text(TRACE_HTML, encoding="utf-8")
     (target / "styles.css").write_text(STYLES_CSS, encoding="utf-8")
     (target / "app.js").write_text(APP_JS, encoding="utf-8")
+    (target / "perfetto-embed.js").write_text(PERFETTO_EMBED_JS, encoding="utf-8")
     vendor_target = target / "vendor"
     vendor_target.mkdir(exist_ok=True)
     for filename in VENDOR_FILES:
@@ -81,6 +88,10 @@ INDEX_HTML = """<!doctype html>
           <h3>Overview</h3>
           <div id="session-overview-metrics" class="detail-metrics"></div>
         </article>
+        <article class="analysis-card wide">
+          <h3>Token Growth</h3>
+          <div id="session-token-growth-chart" class="chart"></div>
+        </article>
         <article class="analysis-card">
           <h3>Complexity</h3>
           <div id="session-complexity-chart" class="chart compact"></div>
@@ -96,6 +107,14 @@ INDEX_HTML = """<!doctype html>
         <article class="analysis-card">
           <h3>Related Benchmarks</h3>
           <div id="session-related-benchmarks" class="detail-chip-list"></div>
+        </article>
+        <article class="analysis-card wide">
+          <h3>Trace Preview</h3>
+          <div id="session-trace-links" class="trace-links"></div>
+          <div class="perfetto-panel">
+            <iframe id="session-perfetto-frame" class="perfetto-frame" src="https://ui.perfetto.dev/#!/?mode=embedded" title="Session Perfetto trace"></iframe>
+            <div class="perfetto-status" id="session-perfetto-status">Select a session trace</div>
+          </div>
         </article>
         <article class="analysis-card wide">
           <h3>Logs</h3>
@@ -127,6 +146,14 @@ INDEX_HTML = """<!doctype html>
           <h3>Aggregate Metrics</h3>
           <div id="benchmark-aggregate-metrics" class="detail-metrics"></div>
         </article>
+        <article class="analysis-card wide">
+          <h3>Trace Preview</h3>
+          <div id="benchmark-trace-links" class="trace-links"></div>
+          <div class="perfetto-panel">
+            <iframe id="benchmark-perfetto-frame" class="perfetto-frame" src="https://ui.perfetto.dev/#!/?mode=embedded" title="Benchmark Perfetto trace"></iframe>
+            <div class="perfetto-status" id="benchmark-perfetto-status">Select a benchmark trace</div>
+          </div>
+        </article>
         <article class="analysis-card">
           <h3>Quality / Completion</h3>
           <div id="benchmark-quality-chart" class="chart compact"></div>
@@ -149,7 +176,37 @@ INDEX_HTML = """<!doctype html>
 
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/tabulator.min.js"></script>
+  <script src="perfetto-embed.js"></script>
   <script src="app.js"></script>
+</body>
+</html>
+"""
+
+
+TRACE_HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgentMinMax Perfetto Trace</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="trace-page" data-perfetto-page="true">
+  <header class="topbar">
+    <div>
+      <h1>Perfetto Trace</h1>
+      <p>Embedded Perfetto UI for Codex session and benchmark traces.</p>
+    </div>
+    <div class="top-actions">
+      <a class="tool-button" id="download-trace" href="#">Download Perfetto JSON</a>
+      <a class="tool-button" href="index.html">Dashboard</a>
+      <div class="status-pill" id="status">Loading</div>
+    </div>
+  </header>
+  <main class="perfetto-fullscreen">
+    <iframe id="perfetto-frame" class="perfetto-frame full" src="https://ui.perfetto.dev/#!/?mode=embedded" title="Perfetto trace viewer"></iframe>
+  </main>
+  <script src="perfetto-embed.js"></script>
 </body>
 </html>
 """
@@ -321,6 +378,55 @@ td {
 
 .chart.compact {
   height: 260px;
+}
+
+.trace-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.perfetto-panel {
+  position: relative;
+  min-height: 520px;
+  margin-top: 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.perfetto-frame {
+  display: block;
+  width: 100%;
+  height: 520px;
+  border: 0;
+  background: #ffffff;
+}
+
+.perfetto-frame.full {
+  height: calc(100vh - 104px);
+  min-height: 620px;
+}
+
+.perfetto-status {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  max-width: min(420px, calc(100% - 24px));
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  box-shadow: 0 4px 18px rgba(25, 31, 44, 0.08);
+}
+
+.perfetto-fullscreen {
+  padding: 0;
 }
 
 .source-list {
@@ -641,6 +747,116 @@ th {
 """
 
 
+PERFETTO_EMBED_JS = """const AgentMinMaxPerfetto = (() => {
+  const PERFETTO_URL = "https://ui.perfetto.dev/#!/?mode=embedded";
+  const activeLoads = new Map();
+
+  async function render({ frameId, statusId, trace, title }) {
+    const frame = document.getElementById(frameId);
+    const status = statusId ? document.getElementById(statusId) : null;
+    if (!frame) return;
+    const traceFile = trace && trace.perfetto_json;
+    if (!traceFile) {
+      setStatus(status, "No trace export available");
+      return;
+    }
+
+    const token = `${frameId}:${traceFile}:${Date.now()}`;
+    activeLoads.set(frameId, token);
+    setStatus(status, "Loading trace");
+    if (!frame.src || !frame.src.includes("mode=embedded")) frame.src = PERFETTO_URL;
+
+    try {
+      const response = await fetch(traceFile);
+      if (!response.ok) throw new Error(`${response.status} ${traceFile}`);
+      const buffer = await response.arrayBuffer();
+      await waitForPerfetto(frame, token);
+      if (activeLoads.get(frameId) !== token) return;
+      frame.contentWindow.postMessage({
+        perfetto: {
+          buffer,
+          title: title || traceFile,
+          fileName: traceFile.split("/").pop(),
+          localOnly: true,
+          keepApiOpen: true
+        }
+      }, "*");
+      setStatus(status, `Loaded in Perfetto · ${formatBytes(buffer.byteLength)}`);
+    } catch (error) {
+      console.error(error);
+      setStatus(status, "Perfetto load failed");
+    }
+  }
+
+  function waitForPerfetto(frame, token) {
+    return new Promise((resolve, reject) => {
+      const started = Date.now();
+      const interval = window.setInterval(() => {
+        if (activeLoads.get(frame.id) !== token) {
+          cleanup();
+          resolve();
+          return;
+        }
+        if (Date.now() - started > 15000) {
+          cleanup();
+          reject(new Error("Perfetto iframe did not respond"));
+          return;
+        }
+        frame.contentWindow?.postMessage('PING', '*');
+      }, 100);
+
+      function onMessage(evt) {
+        if (evt.source === frame.contentWindow && evt.data === 'PONG') {
+          cleanup();
+          resolve();
+        }
+      }
+
+      function cleanup() {
+        window.clearInterval(interval);
+        window.removeEventListener("message", onMessage);
+      }
+
+      window.addEventListener("message", onMessage);
+      frame.contentWindow?.postMessage('PING', '*');
+    });
+  }
+
+  function initTracePage() {
+    const params = new URLSearchParams(window.location.search);
+    const file = params.get("file");
+    const title = params.get("title") || file || "AgentMinMax trace";
+    const download = document.getElementById("download-trace");
+    if (download && file) download.href = file;
+    render({
+      frameId: "perfetto-frame",
+      statusId: "status",
+      trace: { perfetto_json: file },
+      title
+    });
+  }
+
+  function setStatus(node, value) {
+    if (node) node.textContent = value;
+  }
+
+  function formatBytes(value) {
+    if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+    if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${value} B`;
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    if (document.body?.dataset.perfettoPage === "true") initTracePage();
+  });
+
+  return { render, initTracePage };
+})();
+
+window.AgentMinMaxPerfetto = AgentMinMaxPerfetto;
+"""
+
+
 APP_JS = """const fmt = new Intl.NumberFormat("en-US");
 
 let observation = null;
@@ -880,6 +1096,14 @@ function renderSessionAnalysis(session) {
   ]);
   document.getElementById("session-related-benchmarks").innerHTML = relatedBenchmarkList(session);
   document.getElementById("session-log-list").innerHTML = logDetailList(session.logs || []);
+  document.getElementById("session-trace-links").innerHTML = renderTraceLinks(session.trace, `Session ${session.session_id}`);
+  AgentMinMaxPerfetto.render({
+    frameId: "session-perfetto-frame",
+    statusId: "session-perfetto-status",
+    trace: session.trace,
+    title: `Session ${session.session_id}`
+  });
+  renderSessionTokenGrowthChart(session);
   renderSessionComplexityChart(session);
   renderSessionTokenToolChart(session);
 }
@@ -907,6 +1131,13 @@ function renderBenchmarkAnalysis(run) {
   ]);
   document.getElementById("benchmark-session-list").innerHTML = sessionChipList(sessions);
   document.getElementById("benchmark-task-results").innerHTML = benchmarkTaskList(run);
+  document.getElementById("benchmark-trace-links").innerHTML = renderTraceLinks(run.trace, `${run.benchmark} · ${run.run_id || "unassigned"}`);
+  AgentMinMaxPerfetto.render({
+    frameId: "benchmark-perfetto-frame",
+    statusId: "benchmark-perfetto-status",
+    trace: run.trace,
+    title: `${run.benchmark} · ${run.run_id || "unassigned"}`
+  });
   renderBenchmarkQualityChart(run);
   renderBenchmarkCostChart(run);
 }
@@ -1016,6 +1247,17 @@ function benchmarkTaskList(run) {
   return benchmarkResultList(rows, true);
 }
 
+function renderTraceLinks(trace, title = "AgentMinMax trace") {
+  if (!trace || !trace.perfetto_json) return '<p class="empty">No trace export is available.</p>';
+  const traceFile = trace.perfetto_json;
+  const explorerUrl = `trace.html?file=${encodeURIComponent(traceFile)}&title=${encodeURIComponent(title)}`;
+  return `
+    <a class="tool-button" href="${escapeHtml(explorerUrl)}" target="_blank" rel="noreferrer">Open Embedded Perfetto</a>
+    <a class="tool-button" href="${escapeHtml(traceFile)}" download>Download Perfetto JSON</a>
+    <span class="source-meta">${fmt.format(trace.event_count || 0)} events</span>
+  `;
+}
+
 function benchmarkSessions(run) {
   return (observation.sessions || []).filter((session) => {
     if (session.source_id !== run.source_id) return false;
@@ -1045,6 +1287,75 @@ function renderSessionComplexityChart(session) {
       }
     ]
   });
+}
+
+function renderSessionTokenGrowthChart(session) {
+  const points = tokenGrowthPoints(session);
+  const chart = getChart("session-token-growth-chart");
+  if (!points.length) {
+    chart.setOption({
+      title: { text: "No token samples captured", left: "center", top: "middle", textStyle: { color: "#8792a2", fontSize: 13, fontWeight: 500 } },
+      xAxis: { type: "category", data: [] },
+      yAxis: { type: "value" },
+      series: []
+    }, true);
+    return;
+  }
+  chart.setOption({
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "cross" },
+      valueFormatter: (value) => fmt.format(value || 0)
+    },
+    legend: { top: 8, data: ["Input", "Output", "Cached Input", "Total"] },
+    grid: { left: 76, right: 28, top: 52, bottom: 48 },
+    xAxis: { type: "category", boundaryGap: false, data: points.map((point) => point.label) },
+    yAxis: { type: "value", name: "tokens" },
+    series: [
+      { name: "Input", type: "line", smooth: true, showSymbol: points.length < 32, data: points.map((point) => point.input) },
+      { name: "Output", type: "line", smooth: true, showSymbol: points.length < 32, data: points.map((point) => point.output) },
+      { name: "Cached Input", type: "line", smooth: true, showSymbol: points.length < 32, data: points.map((point) => point.cachedInput) },
+      { name: "Total", type: "line", smooth: true, showSymbol: points.length < 32, lineStyle: { width: 3 }, data: points.map((point) => point.total) }
+    ]
+  }, true);
+}
+
+function tokenGrowthPoints(session) {
+  const events = (session.trace_events || [])
+    .filter((event) => event.category === "tokens" && event.tokens)
+    .sort((left, right) => timestampMs(left.timestamp) - timestampMs(right.timestamp));
+  const points = events.map((event, index) => tokenPoint(event.tokens || {}, tokenPointLabel(event, index)));
+  if (points.length) return points;
+  const tokens = session.tokens || {};
+  const fallback = tokenPoint(tokens, "final");
+  return fallback.total > 0 ? [fallback] : [];
+}
+
+function tokenPoint(tokens, label) {
+  const input = Number(tokens.input || 0);
+  const output = Number(tokens.output || 0);
+  const cachedInput = Number(tokens.cached_input || 0);
+  return {
+    label,
+    input,
+    output,
+    cachedInput,
+    total: Number(tokens.total || input + output)
+  };
+}
+
+function tokenPointLabel(event, index) {
+  const ms = timestampMs(event.timestamp);
+  if (!Number.isFinite(ms)) return `#${index + 1}`;
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function timestampMs(value) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && String(value).trim() !== "") return numeric * 1000;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
 function renderSessionTokenToolChart(session) {

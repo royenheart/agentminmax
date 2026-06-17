@@ -19,6 +19,14 @@ enabled = true
 tags = ["benchmark"]
 
 [[sources]]
+id = "codex-stream-logs"
+label = "Codex Streaming Logs"
+kind = "codex_logs"
+path = "~/.codex/logs_2.sqlite"
+enabled = false
+tags = ["codex", "trace"]
+
+[[sources]]
 id = "custom-runner"
 label = "Custom Benchmark Runner"
 kind = "command"

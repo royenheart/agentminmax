@@ -42,6 +42,96 @@ def test_dashboard_bundle_includes_interactive_vendor_assets(tmp_path):
     assert "/api/sources" in app
 
 
+def test_dashboard_bundle_exports_trace_files_and_embedded_perfetto_host(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-native-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    trace_file = tmp_path / "traces" / "sessions" / "native-1.json"
+    assert trace_file.exists()
+    trace_payload = json.loads(trace_file.read_text(encoding="utf-8"))
+    event_names = [event["name"] for event in trace_payload["traceEvents"]]
+    assert "exec_command" in event_names
+    assert "Token usage" in event_names
+
+    observation_payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
+    session = observation_payload["sessions"][0]
+    assert session["trace"]["event_count"] >= 6
+    assert session["trace"]["preview_events"]
+    assert session["trace"]["perfetto_json"] == "traces/sessions/native-1.json"
+
+    assert (tmp_path / "trace.html").exists()
+    assert not (tmp_path / "trace.js").exists()
+    assert (tmp_path / "perfetto-embed.js").exists()
+    trace_html = (tmp_path / "trace.html").read_text(encoding="utf-8")
+    perfetto_js = (tmp_path / "perfetto-embed.js").read_text(encoding="utf-8")
+    assert "Perfetto Trace" in trace_html
+    assert 'id="perfetto-frame"' in trace_html
+    assert "https://ui.perfetto.dev/#!/?mode=embedded" in trace_html
+    assert "perfetto-embed.js" in trace_html
+    assert "postMessage('PING'" in perfetto_js
+    assert "evt.data === 'PONG'" in perfetto_js
+    assert "perfetto: {" in perfetto_js
+    assert "buffer" in perfetto_js
+    assert "title" in perfetto_js
+    assert "renderWaterfall" not in perfetto_js
+    assert "trace-slice" not in trace_html
+
+
+def test_dashboard_analysis_panels_embed_perfetto_and_link_to_full_perfetto(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-native-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+
+    assert "<h3>Trace Preview</h3>" in html
+    assert "session-perfetto-frame" in html
+    assert "session-trace-links" in html
+    assert "benchmark-perfetto-frame" in html
+    assert "benchmark-trace-links" in html
+    assert "AgentMinMaxPerfetto.render" in app
+    assert "renderTraceLinks" in app
+    assert "trace.html?file=" in app
+    assert "Open Embedded Perfetto" in app
+    assert "Download Perfetto JSON" in app
+    assert "renderTracePreview" not in app
+    assert "traceTime(" not in app
+
+
+def test_dashboard_session_analysis_restores_token_growth_chart(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-native-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+
+    assert "<h3>Token Growth</h3>" in html
+    assert 'id="session-token-growth-chart"' in html
+    assert "renderSessionTokenGrowthChart(session)" in app
+    assert "tokenGrowthPoints(session)" in app
+    assert "session.trace_events || []" in app
+    assert 'category === "tokens"' in app
+    assert 'name: "Input"' in app
+    assert 'name: "Output"' in app
+    assert 'name: "Cached Input"' in app
+
+
+def test_dashboard_places_trace_preview_directly_above_logs(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-native-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+
+    related_index = html.index("<h3>Related Benchmarks</h3>")
+    trace_index = html.index("<h3>Trace Preview</h3>")
+    logs_index = html.index("<h3>Logs</h3>")
+    assert related_index < trace_index < logs_index
+
+
 def test_dashboard_information_architecture_distinguishes_sessions_from_benchmarks(tmp_path):
     observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
 

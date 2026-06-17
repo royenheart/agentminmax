@@ -5,12 +5,17 @@ from pathlib import Path
 from typing import Any
 
 from agentminmax.config import BenchmarkSource
+from agentminmax.codex_logs import load_codex_log_events
 from agentminmax.ingest import load_jsonl_events
 
 
 def load_source_events(source: BenchmarkSource) -> list[dict[str, Any]]:
     if not source.enabled:
         return []
+    if source.kind == "codex_logs":
+        if not source.path:
+            return []
+        return load_codex_log_events(source.path, source_id=source.id)
     paths = _source_paths(source)
     events: list[dict[str, Any]] = []
     for path in paths:

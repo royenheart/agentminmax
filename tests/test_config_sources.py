@@ -1,4 +1,6 @@
 from pathlib import Path
+import json
+import sqlite3
 
 from agentminmax.config import BenchmarkSource, load_config, save_config
 from agentminmax.sources import load_source_events
@@ -59,6 +61,199 @@ def test_directory_source_recursively_reads_jsonl_files(tmp_path):
 
     assert [event["content"] for event in events] == ["a"]
     assert events[0]["source_id"] == "dir"
+
+
+def test_codex_logs_source_builds_message_stream_duration_events(tmp_path):
+    db_path = tmp_path / "logs_2.sqlite"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        CREATE TABLE logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ts INTEGER NOT NULL,
+          ts_nanos INTEGER NOT NULL,
+          level TEXT NOT NULL,
+          target TEXT NOT NULL,
+          feedback_log_body TEXT,
+          module_path TEXT,
+          file TEXT,
+          line INTEGER,
+          thread_id TEXT,
+          process_uuid TEXT,
+          estimated_bytes INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+
+    def insert_message(ts: int, ts_nanos: int, payload: dict) -> None:
+        connection.execute(
+            """
+            INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body, thread_id, process_uuid)
+            VALUES (?, ?, 'INFO', 'log', ?, 'thread-1', 'process-1')
+            """,
+            (ts, ts_nanos, f"Received message {json.dumps(payload)}"),
+        )
+
+    insert_message(
+        1_787_221_200,
+        100_000_000,
+        {
+            "type": "response.output_item.added",
+            "item": {"id": "msg-1", "type": "message", "role": "assistant", "metadata": {"turn_id": "turn-1"}},
+        },
+    )
+    insert_message(
+        1_787_221_201,
+        0,
+        {
+            "type": "response.output_text.delta",
+            "item_id": "msg-1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "Hello",
+        },
+    )
+    insert_message(
+        1_787_221_203,
+        250_000_000,
+        {
+            "type": "response.output_text.done",
+            "item_id": "msg-1",
+            "output_index": 0,
+            "content_index": 0,
+            "text": "Hello world",
+        },
+    )
+    connection.commit()
+    connection.close()
+    source = BenchmarkSource(id="codex-log", label="Codex Log", kind="codex_logs", path=str(db_path), enabled=True)
+
+    events = load_source_events(source)
+
+    assert len(events) == 1
+    event = events[0]
+    assert event["type"] == "trace_event"
+    assert event["source_id"] == "codex-log"
+    assert event["session_id"] == "thread-1"
+    assert event["category"] == "message"
+    assert event["phase"] == "duration"
+    assert event["timestamp"] == "2026-08-20T10:20:00.100000Z"
+    assert event["end_timestamp"] == "2026-08-20T10:20:03.250000Z"
+    assert event["duration_ms"] == 3150
+    assert event["args"]["turn_id"] == "turn-1"
+    assert event["detail"] == "Hello world"
+
+
+def test_codex_logs_source_uses_output_item_done_when_text_done_is_missing(tmp_path):
+    db_path = tmp_path / "logs_2.sqlite"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        CREATE TABLE logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ts INTEGER NOT NULL,
+          ts_nanos INTEGER NOT NULL,
+          level TEXT NOT NULL,
+          target TEXT NOT NULL,
+          feedback_log_body TEXT,
+          module_path TEXT,
+          file TEXT,
+          line INTEGER,
+          thread_id TEXT,
+          process_uuid TEXT,
+          estimated_bytes INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body, thread_id, process_uuid)
+        VALUES (?, ?, 'INFO', 'log', ?, 'thread-2', 'process-1')
+        """,
+        (
+            1_787_221_200,
+            0,
+            'Received message {"type":"response.output_text.delta","item_id":"msg-2","delta":"Partial"}',
+        ),
+    )
+    connection.execute(
+        """
+        INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body, thread_id, process_uuid)
+        VALUES (?, ?, 'INFO', 'log', ?, 'thread-2', 'process-1')
+        """,
+        (
+            1_787_221_204,
+            0,
+            "Received message "
+            + json.dumps(
+                {
+                    "type": "response.output_item.done",
+                    "item": {
+                        "id": "msg-2",
+                        "type": "message",
+                        "status": "completed",
+                        "role": "assistant",
+                        "metadata": {"turn_id": "turn-2"},
+                        "content": [{"type": "output_text", "text": "Final message"}],
+                    },
+                }
+            ),
+        ),
+    )
+    connection.commit()
+    connection.close()
+    source = BenchmarkSource(id="codex-log", label="Codex Log", kind="codex_logs", path=str(db_path), enabled=True)
+
+    events = load_source_events(source)
+
+    assert len(events) == 1
+    assert events[0]["session_id"] == "thread-2"
+    assert events[0]["duration_ms"] == 4000
+    assert events[0]["detail"] == "Final message"
+    assert events[0]["args"]["turn_id"] == "turn-2"
+
+
+def test_codex_logs_source_parses_received_messages_with_span_prefix(tmp_path):
+    db_path = tmp_path / "logs_2.sqlite"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        CREATE TABLE logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ts INTEGER NOT NULL,
+          ts_nanos INTEGER NOT NULL,
+          level TEXT NOT NULL,
+          target TEXT NOT NULL,
+          feedback_log_body TEXT,
+          module_path TEXT,
+          file TEXT,
+          line INTEGER,
+          thread_id TEXT,
+          process_uuid TEXT,
+          estimated_bytes INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    body = (
+        'session_loop{thread_id=thread-3}:submission_dispatch '
+        'Received message {"type":"response.output_text.done","item_id":"msg-3","text":"Prefixed"}'
+    )
+    connection.execute(
+        """
+        INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body, thread_id, process_uuid)
+        VALUES (?, ?, 'INFO', 'log', ?, 'thread-3', 'process-1')
+        """,
+        (1_787_221_205, 0, body),
+    )
+    connection.commit()
+    connection.close()
+    source = BenchmarkSource(id="codex-log", label="Codex Log", kind="codex_logs", path=str(db_path), enabled=True)
+
+    events = load_source_events(source)
+
+    assert len(events) == 1
+    assert events[0]["session_id"] == "thread-3"
+    assert events[0]["detail"] == "Prefixed"
 
 
 def test_disabled_source_returns_no_events(tmp_path):

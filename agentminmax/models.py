@@ -58,6 +58,7 @@ class BenchmarkRun:
     total_tool_calls: int
     total_duration_seconds: int
     total_lines_changed: int
+    trace: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -67,6 +68,26 @@ class ComplexityMetrics:
     effective_score: float
     recommended_grain: str
     chaos_score: float
+
+
+@dataclass(slots=True)
+class TraceEvent:
+    event_id: str
+    category: str
+    name: str
+    phase: str
+    timestamp: str | None = None
+    end_timestamp: str | None = None
+    duration_ms: int = 0
+    lane: str = "agent"
+    status: str = "unknown"
+    summary: str = ""
+    detail: str = ""
+    call_id: str | None = None
+    args: dict[str, Any] = field(default_factory=dict)
+    output: str = ""
+    tokens: dict[str, int] = field(default_factory=dict)
+    raw_type: str = ""
 
 
 @dataclass(slots=True)
@@ -86,6 +107,8 @@ class AgentSession:
     code: CodeMetrics = field(default_factory=CodeMetrics)
     complexity: ComplexityMetrics | None = None
     logs: list[str] = field(default_factory=list)
+    trace_events: list[TraceEvent] = field(default_factory=list)
+    trace: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)

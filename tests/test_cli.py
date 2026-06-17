@@ -53,6 +53,22 @@ def test_cli_collect_attaches_external_benchmark_results(tmp_path):
     assert payload["summary"]["benchmark_completion_rate"] == pytest.approx(2 / 3, abs=0.0001)
 
 
+def test_cli_collect_populates_static_source_metadata(tmp_path):
+    trace = tmp_path / "local-run.jsonl"
+    trace.write_text(
+        '{"type":"session_start","session_id":"s","timestamp":"2026-06-17T00:00:00Z"}\n',
+        encoding="utf-8",
+    )
+
+    result = run_cli("collect", str(trace), "--out", str(tmp_path / "bundle"))
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads((tmp_path / "bundle" / "observations.json").read_text())
+    assert payload["sources"][0]["id"] == "local-run"
+    assert payload["sources"][0]["path"] == str(trace)
+    assert payload["sessions"][0]["source_id"] == "local-run"
+
+
 def test_cli_run_benchmark_reports_configured_command_failure(tmp_path):
     config_path = tmp_path / "agentminmax.toml"
     config_path.write_text(

@@ -3,13 +3,14 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import re
 from pathlib import Path
 
 from agentminmax.benchmarks import load_benchmark_results
 from agentminmax.config import load_config
 from agentminmax.dashboard import export_dashboard_bundle, serve_dashboard
 from agentminmax.demo import demo_observation
-from agentminmax.ingest import build_observation, load_many_jsonl, summarize_sessions
+from agentminmax.ingest import build_observation, load_jsonl_events, load_many_jsonl, summarize_sessions
 from agentminmax.server import ObservationServer, serve_dynamic
 
 
@@ -62,7 +63,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "collect":
         inputs = _expand_inputs(args.inputs)
-        observation = build_observation(load_many_jsonl(inputs))
+        events, sources = _load_collect_inputs(inputs)
+        observation = build_observation(events, sources=sources)
         _attach_external_benchmarks(observation, args.benchmark_results)
         export_dashboard_bundle(observation, args.out)
         print(f"dashboard bundle: {Path(args.out).resolve()}")
@@ -134,6 +136,39 @@ def _expand_inputs(inputs: list[str]) -> list[str]:
         matches = glob.glob(item)
         paths.extend(matches if matches else [item])
     return paths
+
+
+def _load_collect_inputs(inputs: list[str]) -> tuple[list[dict], list[dict]]:
+    events: list[dict] = []
+    sources_by_id: dict[str, dict] = {}
+    for input_path in inputs:
+        path_events = load_jsonl_events(input_path)
+        fallback_source_id = _source_id_from_path(input_path)
+        source_ids: set[str] = set()
+        for event in path_events:
+            event.setdefault("source_id", fallback_source_id)
+            source_ids.add(str(event.get("source_id") or fallback_source_id))
+        for source_id in sorted(source_ids or {fallback_source_id}):
+            sources_by_id.setdefault(
+                source_id,
+                {
+                    "id": source_id,
+                    "label": source_id,
+                    "kind": "jsonl_glob",
+                    "path": str(input_path),
+                    "enabled": True,
+                    "tags": ["static"],
+                    "last_status": "ok",
+                },
+            )
+        events.extend(path_events)
+    return events, [sources_by_id[source_id] for source_id in sorted(sources_by_id)]
+
+
+def _source_id_from_path(path: str) -> str:
+    stem = Path(path).expanduser().stem
+    source_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", stem).strip("-")
+    return source_id or "static-jsonl"
 
 
 def _attach_external_benchmarks(observation, benchmark_paths: list[str]) -> None:

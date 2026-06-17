@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 
-SourceKind = Literal["jsonl_glob", "directory", "command"]
+SourceKind = Literal["jsonl_glob", "directory", "command", "codex_logs"]
 
 
 @dataclass(slots=True)
@@ -71,7 +71,7 @@ def source_from_dict(payload: dict) -> BenchmarkSource:
     if not source_id:
         raise ValueError("source id must be non-empty")
     kind = str(payload.get("kind", "jsonl_glob"))
-    if kind not in {"jsonl_glob", "directory", "command"}:
+    if kind not in {"jsonl_glob", "directory", "command", "codex_logs"}:
         raise ValueError(f"unsupported source kind: {kind}")
     command = payload.get("command")
     return BenchmarkSource(
