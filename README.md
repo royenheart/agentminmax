@@ -141,6 +141,32 @@ End-to-end benchmark management lives under `tests/e2e/benchmarks`.
 python -m pytest -q
 ```
 
+## Persistent Performance
+
+Persistent performance checks live under `tests/perf`. They measure core local workflows, append JSONL history, and generate a static trend page with an SVG line chart:
+
+```bash
+python tests/perf/run_perf.py --history perf-results/perf-history.jsonl --output-dir perf-results
+```
+
+The `Persistent Performance` GitHub Actions workflow runs only on `master` pushes, restores the previous `perf-history.jsonl` from the `perf-results` branch, appends the current run, uploads the results as an artifact, and republishes `perf-results/index.html` plus `perf-trends.svg` for trend inspection.
+
+`perf-results` is a generated results branch, not a development branch. The workflow creates it on the first successful `master` run if it does not already exist, then updates it on later runs so historical trend data survives between CI jobs. To inspect performance, use the `agentminmax-perf-results` artifact from the workflow run, browse the generated files on the `perf-results` branch, or enable GitHub Pages from that branch root and open `index.html`.
+
+Local workflow debugging can be done with `act`. The publish and artifact-upload steps are skipped under `act`, while the install, history restore, and performance runner steps still execute:
+
+```bash
+mkdir -p /var/tmp/agentminmax-act /var/tmp/agentminmax-act-cache
+TMPDIR=/var/tmp/agentminmax-act act push \
+  -W .github/workflows/perf.yml \
+  -j perf \
+  --defaultbranch master \
+  --bind \
+  --action-cache-path /var/tmp/agentminmax-act-cache \
+  -P ubuntu-latest=python:3.12-slim-bookworm \
+  -e <(printf '%s' '{"ref":"refs/heads/master","after":"0000000000000000000000000000000000000000","repository":{"default_branch":"master"}}')
+```
+
 ## Current Scope
 
 AgentMinMax is still a research prototype. It is useful for exploring goal granularity, local versus global optimization, benchmark aggregation from session observations, and how model scale changes the grain of agent work. It is not yet a full telemetry platform, but the current architecture has explicit extension points for additional agent runtimes, richer benchmark adapters, and alternate trace viewers.

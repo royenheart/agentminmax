@@ -1,0 +1,72 @@
+name: Persistent Performance
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  perf:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install local act dependencies
+        if: ${{ env.ACT }}
+        run: |
+          apt-get update
+          apt-get install -y git
+
+      - name: Set up Python
+        if: ${{ !env.ACT }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install package
+        run: python -m pip install -e '.[dev]'
+
+      - name: Restore persisted performance history
+        run: |
+          mkdir -p perf-results
+          if git ls-remote --exit-code --heads origin perf-results >/dev/null 2>&1; then
+            git fetch origin perf-results:refs/remotes/origin/perf-results
+            git show origin/perf-results:perf-history.jsonl > perf-results/perf-history.jsonl || true
+          fi
+
+      - name: Run persistent performance suite
+        run: |
+          python tests/perf/run_perf.py \
+            --history perf-results/perf-history.jsonl \
+            --output-dir perf-results \
+            --commit "$GITHUB_SHA" \
+            --branch "$GITHUB_REF_NAME" \
+            --rounds 5
+
+      - name: Upload performance artifact
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentminmax-perf-results
+          path: |
+            perf-results/perf-history.jsonl
+            perf-results/perf-summary.json
+            perf-results/perf-current.json
+            perf-results/perf-trends.svg
+            perf-results/index.html
+
+      - name: Publish performance trends
+        if: ${{ !env.ACT }}
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: perf-results
+          publish_dir: ./perf-results
+          keep_files: true
