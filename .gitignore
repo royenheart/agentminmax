@@ -7,9 +7,13 @@ dist/
 build/
 *.egg-info/
 data/
+!agentminmax/data/
+!agentminmax/data/model_sizes.json
 data/generated/
 dashboard-dist/
 runs/
 screenshots/
 docs/superpowers/
 tests/e2e/benchmarks/third_party/
+
+.plans

@@ -34,6 +34,36 @@ class CodeMetrics:
 
 
 @dataclass(slots=True)
+class MetricEvent:
+    name: str
+    value: float | int | str
+    unit: str = "count"
+    category: str = "general"
+    timestamp: str | None = None
+    labels: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class MetricValue:
+    metric_id: str
+    label: str
+    value: float | int | str
+    unit: str = "count"
+    description: str = ""
+    formula: str = ""
+    inputs: list[str] = field(default_factory=list)
+    labels: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class MetricGroup:
+    group_id: str
+    label: str
+    display: dict[str, Any] = field(default_factory=dict)
+    metrics: list[MetricValue] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class BenchmarkResult:
     benchmark: str
     task_id: str
@@ -58,6 +88,7 @@ class BenchmarkRun:
     total_tool_calls: int
     total_duration_seconds: int
     total_lines_changed: int
+    metric_groups: list[MetricGroup] = field(default_factory=list)
     trace: dict[str, Any] = field(default_factory=dict)
 
 
@@ -108,6 +139,8 @@ class AgentSession:
     complexity: ComplexityMetrics | None = None
     logs: list[str] = field(default_factory=list)
     trace_events: list[TraceEvent] = field(default_factory=list)
+    metric_events: list[MetricEvent] = field(default_factory=list)
+    metric_groups: list[MetricGroup] = field(default_factory=list)
     trace: dict[str, Any] = field(default_factory=dict)
 
 

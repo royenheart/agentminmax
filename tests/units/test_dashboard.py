@@ -239,6 +239,198 @@ def test_dashboard_analysis_cards_show_loading_spinner_and_overlay(tmp_path):
     assert "function setAnalysisLoading(panelId, loading)" in app
 
 
+def test_dashboard_renders_session_and_benchmark_metric_groups(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+    styles = (tmp_path / "styles.css").read_text(encoding="utf-8")
+
+    assert "<h3>Metric Groups</h3>" not in html
+    assert 'id="session-metric-group-cards"' in html
+    assert 'id="benchmark-metric-group-cards"' in html
+    assert "renderMetricGroupCards(session.metric_groups" in app
+    assert "renderMetricGroupCards(run.metric_groups" in app
+    assert "function renderMetricGroupCards(groups)" in app
+    assert 'class="analysis-card metric-group-card' in app
+    assert ".metric-card-region" in styles
+
+
+def test_dashboard_removes_duplicate_summary_metric_cards_and_legacy_charts(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+
+    assert "<h3>Overview</h3>" in html
+    assert 'id="session-overview-metrics"' in html
+    assert '["Agent", session.agent || "unknown"]' in app
+    assert '["Model", model.name || "unknown"]' in app
+    assert '["Provider", model.provider || "unknown"]' in app
+    assert '["Status", session.status || "unknown"]' in app
+
+    duplicate_html = [
+        "Tokens And Tools",
+        "Code Changes",
+        "Aggregate Metrics",
+        "Quality / Completion",
+        "Cost Breakdown",
+        'id="session-token-tool-chart"',
+        'id="session-code-metrics"',
+        'id="benchmark-aggregate-metrics"',
+        'id="benchmark-quality-chart"',
+        'id="benchmark-cost-chart"',
+    ]
+    for marker in duplicate_html:
+        assert marker not in html
+
+    duplicate_app = [
+        '["Size", parameters.declared_size || parameters.size || "unknown"]',
+        '["Duration", secondsText(session.duration_seconds)]',
+        '["Total Tokens", fmt.format((tokens.input || 0) + (tokens.output || 0))]',
+        '["Tool Calls", fmt.format(sumValues(session.tool_calls))]',
+        "session-code-metrics",
+        "benchmark-aggregate-metrics",
+        "renderSessionTokenToolChart",
+        "renderBenchmarkQualityChart",
+        "renderBenchmarkCostChart",
+    ]
+    for marker in duplicate_app:
+        assert marker not in app
+
+
+def test_dashboard_metric_cards_expose_metadata_via_actions(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
+    session_groups = payload["sessions"][0]["metric_groups"]
+    llm_group = next(group for group in session_groups if group["group_id"] == "llm")
+    expansion = next(metric for metric in llm_group["metrics"] if metric["metric_id"] == "input_output_expansion_ratio")
+    assert expansion["inputs"] == ["token.output", "token.input"]
+    assert expansion["formula"] == "token.output / token.input"
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+    styles = (tmp_path / "styles.css").read_text(encoding="utf-8")
+    assert 'id="detail-modal"' in html
+    assert "detailActionButton" in app
+    assert "showDetailModal" in app
+    assert "metricDetailPayload(metric)" in app
+    assert "genericMetricDetailPayload(label, value)" in app
+    assert "groupDetailPayload(group)" in app
+    assert "eventDetailPayload(event)" in app
+    assert ">View</button>" in app
+    assert "查看具体信息" not in app
+    assert "操作" not in app
+    assert "metric-actions-label" not in app
+    assert "metric.formula" in app
+    assert "metric.inputs" in app
+    assert 'class="metric-actions"' in app
+    assert 'class="metric-action-box"' in app
+    assert 'class="metric-group-actions"' in app
+    assert 'class="metric-formula"' not in app
+    assert ".metric-actions" in styles
+    assert ".metric-action-box" in styles
+    assert ".metric-group-actions" in styles
+    assert ".detail-modal" in styles
+    assert ".metric-formula" not in styles
+    assert ".metric-actions-label" not in styles
+
+
+def test_dashboard_metric_visualization_is_group_level_and_configurable(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+    styles = (tmp_path / "styles.css").read_text(encoding="utf-8")
+
+    assert "const metricGroupVisualizers" in app
+    assert "metricGroupVisualConfig(group)" in app
+    assert "metricGroupVisualizers[config.kind]" in app
+    assert "renderMetricBars" in app
+    assert "renderMetricCards(metrics)" in app
+    assert "metricVisualHtml" not in app
+    assert "metric-visual-card" not in app
+    assert "metric-bars" in app
+    assert "metric-bar-track" in app
+    assert "metric-bar-meta" in app
+    assert ".metric-bars" in styles
+    assert ".metric-bar-track" in styles
+    assert ".metric-bar-fill" in styles
+    assert ".metric-bar-meta" in styles
+    assert ".metric-visual-card" not in styles
+
+
+def test_dashboard_metric_detail_shows_metric_labels(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+    payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
+    model_group = next(group for group in payload["sessions"][0]["metric_groups"] if group["group_id"] == "model")
+    model_size = next(metric for metric in model_group["metrics"] if metric["metric_id"] == "model_size_billions")
+
+    assert model_group["display"] == {"kind": "cards"}
+    assert "model_size_source" not in {metric["metric_id"] for metric in model_group["metrics"]}
+    assert model_size["labels"]["source"] == "declared"
+    assert "metricLabelsText(metric.labels)" in app
+    assert '["Labels", metricLabelsText(metric.labels)]' in app
+    assert 'if (value === "unknown") return "unknown";' in app
+
+
+def test_dashboard_renders_complexity_group_with_declared_display_kind(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
+    session_groups = payload["sessions"][0]["metric_groups"]
+    complexity_group = next(group for group in session_groups if group["group_id"] == "complexity")
+    assert complexity_group["display"] == {"kind": "histogram"}
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+    styles = (tmp_path / "styles.css").read_text(encoding="utf-8")
+    assert "metricGroupDisplayHtml(group)" in app
+    assert "renderMetricHistogram" in app
+    assert "metric-histogram" in app
+    assert "metricDetailPayload(metric)" in app
+    assert 'class="metric-actions"' in app
+    assert ".metric-histogram" in styles
+    assert 'id="session-complexity-chart"' not in html
+    assert "renderSessionComplexityChart" not in app
+
+
+def test_dashboard_renders_session_metric_events_layer(tmp_path):
+    observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
+
+    export_dashboard_bundle(observation, tmp_path)
+
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    app = (tmp_path / "app.js").read_text(encoding="utf-8")
+    styles = (tmp_path / "styles.css").read_text(encoding="utf-8")
+    payload = json.loads((tmp_path / "observations.json").read_text(encoding="utf-8"))
+    detail_payload = json.loads((tmp_path / payload["sessions"][0]["detail_json"]).read_text(encoding="utf-8"))
+
+    assert "<h3>Events</h3>" in html
+    assert "<h3>Metric Events</h3>" not in html
+    assert 'id="session-metric-events"' in html
+    assert "renderMetricEvents(session.metric_events" in app
+    assert "metric-event-list" in styles
+    assert "metric-event" in styles
+
+    event_names = {event["name"] for event in detail_payload["session"]["metric_events"]}
+    assert {"token.input", "tool.call", "code.lines_changed"}.issubset(event_names)
+
+
 def test_dashboard_information_architecture_distinguishes_sessions_from_benchmarks(tmp_path):
     observation = build_observation(load_jsonl_events(FIXTURES / "codex-session.jsonl"))
 

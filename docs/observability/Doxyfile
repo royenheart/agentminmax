@@ -1,0 +1,22 @@
+PROJECT_NAME = "AgentMinMax Observability"
+PROJECT_BRIEF = "Events and metrics used by the AgentMinMax dashboard"
+OUTPUT_DIRECTORY = build/doxygen-observability
+INPUT = agentminmax/metrics.py \
+        agentminmax/models.py \
+        agentminmax/ingest.py
+FILE_PATTERNS = *.py
+RECURSIVE = NO
+EXTRACT_ALL = YES
+EXTRACT_PRIVATE = NO
+OPTIMIZE_OUTPUT_JAVA = YES
+PYTHON_DOCSTRING = NO
+GENERATE_HTML = NO
+GENERATE_LATEX = NO
+GENERATE_MAN = NO
+GENERATE_RTF = NO
+GENERATE_DOCBOOK = NO
+GENERATE_XML = YES
+XML_OUTPUT = xml
+QUIET = YES
+WARN_IF_UNDOCUMENTED = NO
+WARN_AS_ERROR = NO

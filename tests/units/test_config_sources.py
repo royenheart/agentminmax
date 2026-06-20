@@ -3,7 +3,7 @@ import json
 import sqlite3
 
 from agentminmax.config import BenchmarkSource, load_config, save_config
-from agentminmax.sources import load_source_events
+from agentminmax.sources import DirectorySource, JsonlGlobSource, ObservationSource, load_source_events, source_loader_for
 
 
 def test_load_config_round_trip_expands_jsonl_glob(tmp_path):
@@ -42,6 +42,31 @@ def test_load_config_round_trip_expands_jsonl_glob(tmp_path):
     assert reloaded.sources[0].tags == ["daily"]
     assert events[0]["type"] == "session_start"
     assert events[0]["source_id"] == "local"
+
+
+def test_source_loader_uses_unified_source_subclasses(tmp_path):
+    trace = tmp_path / "run.jsonl"
+    trace.write_text('{"type":"message","content":"hello"}\n', encoding="utf-8")
+    source = BenchmarkSource(id="local", label="Local", kind="jsonl_glob", path=str(trace), enabled=True)
+
+    loader = source_loader_for(source)
+    events = loader.load_events()
+
+    assert isinstance(loader, ObservationSource)
+    assert isinstance(loader, JsonlGlobSource)
+    assert events == [{"type": "message", "content": "hello", "source_id": "local"}]
+
+
+def test_directory_loader_is_a_source_subclass(tmp_path):
+    nested = tmp_path / "runs"
+    nested.mkdir()
+    (nested / "a.jsonl").write_text('{"type":"message","content":"a"}\n', encoding="utf-8")
+    source = BenchmarkSource(id="dir", label="Directory", kind="directory", path=str(nested), enabled=True)
+
+    loader = source_loader_for(source)
+
+    assert isinstance(loader, DirectorySource)
+    assert loader.load_events()[0]["source_id"] == "dir"
 
 
 def test_directory_source_recursively_reads_jsonl_files(tmp_path):

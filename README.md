@@ -7,10 +7,9 @@ It turns local Codex sessions, benchmark run outputs, token/tool traces, code-ch
 ## Quick Start
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
+pip install -e '.[dev]'
 cp agentminmax.toml.example agentminmax.toml
-CODEX_HOME=${CODEX_HOME:-$HOME/.codex} .venv/bin/python -m agentminmax serve --config agentminmax.toml --bundle dashboard-dist --port 8765
+CODEX_HOME=${CODEX_HOME:-$HOME/.codex} python -m agentminmax serve --config agentminmax.toml --bundle dashboard-dist --port 8765
 ```
 
 Open `http://127.0.0.1:8765/` to view the local dashboard.
@@ -81,7 +80,7 @@ Normalized AgentMinMax JSONL remains supported for synthetic or external agents:
 Run the built-in six-task live experiment:
 
 ```bash
-CODEX_HOME=$HOME/.codex .venv/bin/python experiments.py
+CODEX_HOME=$HOME/.codex python experiments.py
 ```
 
 The experiment writes task workspaces, `results.jsonl`, and `session_benchmark_map.json` under `runs/<experiment-id>/`. The dashboard uses that map to connect benchmark tasks back to the Codex sessions that produced them.
@@ -89,13 +88,13 @@ The experiment writes task workspaces, `results.jsonl`, and `session_benchmark_m
 Run a preconfigured benchmark command source:
 
 ```bash
-.venv/bin/python -m agentminmax run-benchmark custom-runner --config agentminmax.toml --bundle dashboard-dist
+python -m agentminmax run-benchmark custom-runner --config agentminmax.toml --bundle dashboard-dist
 ```
 
 Third-party benchmark collections are managed by scripts rather than vendored into git:
 
 ```bash
-.venv/bin/python tests/e2e/benchmarks/fetch_benchmarks.py
+python tests/e2e/benchmarks/fetch_benchmarks.py
 ```
 
 Fetched collections are placed under `tests/e2e/benchmarks/third_party`, which is ignored by git.
@@ -105,20 +104,20 @@ Fetched collections are placed under `tests/e2e/benchmarks/third_party`, which i
 Summarize a normalized JSONL fixture:
 
 ```bash
-.venv/bin/python -m agentminmax summarize tests/units/fixtures/codex-session.jsonl
+python -m agentminmax summarize tests/units/fixtures/codex-session.jsonl
 ```
 
 Export a static dashboard bundle:
 
 ```bash
-.venv/bin/python -m agentminmax collect tests/units/fixtures/codex-session.jsonl --out dashboard-dist
+python -m agentminmax collect tests/units/fixtures/codex-session.jsonl --out dashboard-dist
 ```
 
 Scan common Codex locations:
 
 ```bash
-.venv/bin/python -m agentminmax scan-codex
-.venv/bin/python -m agentminmax scan-codex --out dashboard-dist
+python -m agentminmax scan-codex
+python -m agentminmax scan-codex --out dashboard-dist
 ```
 
 ## Frontend Assets
@@ -139,7 +138,7 @@ Unit tests live under `tests/units`. The files in `tests/units/fixtures` are sma
 End-to-end benchmark management lives under `tests/e2e/benchmarks`.
 
 ```bash
-.venv/bin/python -m pytest -q
+python -m pytest -q
 ```
 
 ## Current Scope

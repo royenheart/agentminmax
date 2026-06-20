@@ -8,7 +8,7 @@ from typing import Any, Iterable
 
 from agentminmax.aggregation import aggregate_benchmark_runs
 from agentminmax.benchmarks import benchmark_catalog, normalize_benchmark_result
-from agentminmax.complexity import compute_complexity
+from agentminmax.metrics import enrich_benchmark_metrics, enrich_session_metrics
 from agentminmax.models import AgentSession, CodeMetrics, ModelInfo, Observation, ObservationSummary, TokenUsage, TraceEvent
 
 
@@ -365,12 +365,16 @@ def build_observation(
     for session in sessions:
         if session.duration_seconds == 0:
             session.duration_seconds = _duration_seconds(session.start_time, session.end_time)
-        session.complexity = compute_complexity(session)
+        enrich_session_metrics(session)
+
+    benchmark_runs = aggregate_benchmark_runs(sessions)
+    for run in benchmark_runs:
+        enrich_benchmark_metrics(run)
 
     return Observation(
         summary=summarize_sessions(sessions),
         sessions=sessions,
-        benchmark_runs=aggregate_benchmark_runs(sessions),
+        benchmark_runs=benchmark_runs,
         sources=sources or [],
         benchmark_catalog=benchmark_catalog(),
     )

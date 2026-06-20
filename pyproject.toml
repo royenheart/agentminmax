@@ -29,4 +29,5 @@ agentminmax = [
   "assets/dashboard/scripts/*",
   "assets/dashboard/styles/*",
   "assets/vendor/*",
+  "data/*.json",
 ]

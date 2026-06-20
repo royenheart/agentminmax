@@ -46,20 +46,13 @@
           <div id="session-overview-metrics" class="detail-metrics"></div>
         </article>
         <article class="analysis-card wide">
+          <h3>Events</h3>
+          <div id="session-metric-events" class="metric-event-list"></div>
+        </article>
+        <div id="session-metric-group-cards" class="metric-card-region"></div>
+        <article class="analysis-card wide">
           <h3>Token Growth</h3>
           <div id="session-token-growth-chart" class="chart"></div>
-        </article>
-        <article class="analysis-card">
-          <h3>Complexity</h3>
-          <div id="session-complexity-chart" class="chart compact"></div>
-        </article>
-        <article class="analysis-card">
-          <h3>Tokens And Tools</h3>
-          <div id="session-token-tool-chart" class="chart compact"></div>
-        </article>
-        <article class="analysis-card">
-          <h3>Code Changes</h3>
-          <div id="session-code-metrics" class="detail-metrics"></div>
         </article>
         <article class="analysis-card">
           <h3>Related Benchmarks</h3>
@@ -99,10 +92,7 @@
           <h2>Benchmark Analysis</h2>
           <span id="benchmark-analysis-context">select a benchmark</span>
         </div>
-        <article class="analysis-card wide">
-          <h3>Aggregate Metrics</h3>
-          <div id="benchmark-aggregate-metrics" class="detail-metrics"></div>
-        </article>
+        <div id="benchmark-metric-group-cards" class="metric-card-region"></div>
         <article class="analysis-card wide">
           <h3>Trace Preview</h3>
           <div id="benchmark-trace-links" class="trace-links"></div>
@@ -110,14 +100,6 @@
             <iframe id="benchmark-perfetto-frame" class="perfetto-frame" src="https://ui.perfetto.dev/#!/?mode=embedded" title="Benchmark Perfetto trace"></iframe>
             <div class="perfetto-status" id="benchmark-perfetto-status">Select a benchmark trace</div>
           </div>
-        </article>
-        <article class="analysis-card">
-          <h3>Quality / Completion</h3>
-          <div id="benchmark-quality-chart" class="chart compact"></div>
-        </article>
-        <article class="analysis-card">
-          <h3>Cost Breakdown</h3>
-          <div id="benchmark-cost-chart" class="chart compact"></div>
         </article>
         <article class="analysis-card">
           <h3>Contributing Sessions</h3>
@@ -130,6 +112,20 @@
       </div>
     </section>
   </main>
+
+  <div id="detail-modal" class="detail-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+    <div class="detail-modal-backdrop" data-detail-close="true"></div>
+    <section class="detail-modal-panel">
+      <div class="detail-modal-head">
+        <div>
+          <h2 id="detail-modal-title">Details</h2>
+          <span id="detail-modal-subtitle"></span>
+        </div>
+        <button class="tool-button" id="detail-modal-close" type="button">Close</button>
+      </div>
+      <div id="detail-modal-body" class="detail-modal-body"></div>
+    </section>
+  </div>
 
   <script src="vendor/echarts.min.js"></script>
   <script src="vendor/tabulator.min.js"></script>

@@ -7,11 +7,31 @@ let selectedRun = null;
 let sessionTable = null;
 let benchmarkTable = null;
 let charts = {};
+let detailActionSequence = 0;
 const sessionDetails = new Map();
 const benchmarkDetails = new Map();
+const detailActionPayloads = new Map();
+const metricGroupVisualizers = {
+  bars: renderMetricBars,
+  cards: renderMetricCards,
+  histogram: renderMetricHistogram
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("refresh-all").addEventListener("click", refreshAllSources);
+  document.getElementById("detail-modal-close").addEventListener("click", hideDetailModal);
+  document.getElementById("detail-modal").addEventListener("click", (event) => {
+    if (event.target.dataset.detailClose) hideDetailModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideDetailModal();
+  });
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-detail-action-id]");
+    if (!button) return;
+    const payload = detailActionPayloads.get(button.dataset.detailActionId);
+    if (payload) showDetailModal(payload);
+  });
   loadDashboard();
   window.addEventListener("resize", () => Object.values(charts).forEach((chart) => chart.resize()));
 });
@@ -31,6 +51,7 @@ async function loadDashboard() {
 }
 
 function renderAll() {
+  detailActionPayloads.clear();
   renderMetrics(observation.summary);
   renderSourceList();
   renderBenchmarkSources();
@@ -251,29 +272,17 @@ function renderSessionAnalysis(session) {
   setPanelVisibility(panel, Boolean(session));
   if (!session) return;
 
-  const tokens = session.tokens || {};
-  const code = session.code || {};
-  const complexity = session.complexity || {};
   const model = session.model || {};
-  const parameters = model.parameters || {};
 
   document.getElementById("session-analysis-context").textContent = `${session.session_id} · ${sourceLabel(session.source_id)}`;
   document.getElementById("session-overview-metrics").innerHTML = metricItems([
     ["Agent", session.agent || "unknown"],
     ["Model", model.name || "unknown"],
     ["Provider", model.provider || "unknown"],
-    ["Size", parameters.declared_size || parameters.size || "unknown"],
-    ["Status", session.status || "unknown"],
-    ["Duration", secondsText(session.duration_seconds)],
-    ["Total Tokens", fmt.format((tokens.input || 0) + (tokens.output || 0))],
-    ["Tool Calls", fmt.format(sumValues(session.tool_calls))]
+    ["Status", session.status || "unknown"]
   ]);
-  document.getElementById("session-code-metrics").innerHTML = metricItems([
-    ["Files Changed", fmt.format(code.files_changed || 0)],
-    ["Lines Added", fmt.format(code.lines_added || 0)],
-    ["Lines Deleted", fmt.format(code.lines_deleted || 0)],
-    ["Recommended Grain", complexity.recommended_grain || "unknown"]
-  ]);
+  document.getElementById("session-metric-events").innerHTML = renderMetricEvents(session.metric_events || []);
+  document.getElementById("session-metric-group-cards").innerHTML = renderMetricGroupCards(session.metric_groups || []);
   document.getElementById("session-related-benchmarks").innerHTML = relatedBenchmarkList(session);
   document.getElementById("session-log-list").innerHTML = logTimeline(session);
   document.getElementById("session-trace-links").innerHTML = renderTraceLinks(session.trace, `Session ${session.session_id}`);
@@ -284,8 +293,6 @@ function renderSessionAnalysis(session) {
     title: `Session ${session.session_id}`
   });
   renderSessionTokenGrowthChart(session);
-  renderSessionComplexityChart(session);
-  renderSessionTokenToolChart(session);
 }
 
 function renderBenchmarkAnalysis(run) {
@@ -293,23 +300,9 @@ function renderBenchmarkAnalysis(run) {
   setPanelVisibility(panel, Boolean(run));
   if (!run) return;
 
-  const sessions = benchmarkSessions(run);
-
   document.getElementById("benchmark-analysis-context").textContent = `${run.benchmark} · ${run.run_id || "unassigned"}`;
-  document.getElementById("benchmark-aggregate-metrics").innerHTML = metricItems([
-    ["Source", sourceLabel(run.source_id)],
-    ["Run", run.run_id || "unassigned"],
-    ["Sessions", fmt.format(run.session_count || sessions.length)],
-    ["Tasks", fmt.format(run.task_count || 0)],
-    ["Completed", fmt.format(run.completed_count || 0)],
-    ["Completion", pct(run.completion_rate)],
-    ["Quality", pct(run.average_quality_score)],
-    ["Tokens", fmt.format(run.total_tokens || 0)],
-    ["Tool Calls", fmt.format(run.total_tool_calls || 0)],
-    ["Duration", secondsText(run.total_duration_seconds)],
-    ["Lines Changed", fmt.format(run.total_lines_changed || 0)]
-  ]);
-  document.getElementById("benchmark-session-list").innerHTML = sessionChipList(sessions);
+  document.getElementById("benchmark-metric-group-cards").innerHTML = renderMetricGroupCards(run.metric_groups || []);
+  document.getElementById("benchmark-session-list").innerHTML = sessionChipList(benchmarkSessions(run));
   document.getElementById("benchmark-task-results").innerHTML = benchmarkTaskList(run);
   document.getElementById("benchmark-trace-links").innerHTML = renderTraceLinks(run.trace, `${run.benchmark} · ${run.run_id || "unassigned"}`);
   AgentMinMaxPerfetto.render({
@@ -318,8 +311,6 @@ function renderBenchmarkAnalysis(run) {
     trace: run.trace,
     title: `${run.benchmark} · ${run.run_id || "unassigned"}`
   });
-  renderBenchmarkQualityChart(run);
-  renderBenchmarkCostChart(run);
 }
 
 function setPanelVisibility(panel, visible) {
@@ -336,30 +327,288 @@ function setAnalysisLoading(panelId, loading) {
   });
 }
 
-function detailSection(title, content, wide = false) {
-  return `<section class="detail-section${wide ? " wide" : ""}">
-    <h3>${escapeHtml(title)}</h3>
-    ${content}
-  </section>`;
-}
-
 function metricItems(items) {
   return items.map(([label, value]) => `
     <div class="detail-metric">
-      <span>${escapeHtml(label)}</span>
-      <strong>${escapeHtml(value)}</strong>
+      <div class="metric-main">
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(value)}</strong>
+      </div>
+      <div class="metric-actions">
+        ${detailActionButton(genericMetricDetailPayload(label, value))}
+      </div>
     </div>
   `).join("");
 }
 
-function metricGrid(items) {
-  return `<div class="detail-metrics">${metricItems(items)}</div>`;
+function renderMetricGroupCards(groups) {
+  if (!groups.length) {
+    return `<article class="analysis-card metric-group-card wide">
+      <h3>Metrics</h3>
+      <p class="empty">No grouped metrics captured.</p>
+    </article>`;
+  }
+  return groups.map((group) => `
+    <article class="analysis-card metric-group-card${(group.metrics || []).length > 4 ? " wide" : ""}">
+      <div class="metric-group-head">
+        <h3>${escapeHtml(group.label || group.group_id)}</h3>
+        <span>${fmt.format((group.metrics || []).length)} metrics</span>
+        <div class="metric-group-actions">
+          ${detailActionButton(groupDetailPayload(group))}
+        </div>
+      </div>
+      ${metricGroupDisplayHtml(group)}
+    </article>
+  `).join("");
 }
 
-function objectMetricList(value) {
-  const entries = Object.entries(value || {});
-  if (!entries.length) return '<p class="empty">No tool calls captured.</p>';
-  return metricGrid(entries.map(([label, count]) => [label, fmt.format(count || 0)]));
+function metricGroupDisplayHtml(group) {
+  const config = metricGroupVisualConfig(group);
+  const renderer = metricGroupVisualizers[config.kind] || metricGroupVisualizers.cards;
+  return renderer(group.metrics || [], config, group);
+}
+
+function metricGroupVisualConfig(group) {
+  return Object.assign({ kind: "cards" }, group.display || {});
+}
+
+function renderMetricCards(metrics) {
+  return `<div class="detail-metrics">
+    ${metrics.map((metric) => {
+      return `
+        <div class="detail-metric" title="${escapeHtml(metric.description || "")}">
+          <div class="metric-main">
+            <span>${escapeHtml(metric.label || metric.metric_id)}</span>
+            <strong>${escapeHtml(metricValueText(metric))}</strong>
+          </div>
+          <div class="metric-actions">
+            ${detailActionButton(metricDetailPayload(metric))}
+          </div>
+        </div>
+      `;
+    }).join("")}
+  </div>`;
+}
+
+function clampPercent(value, minValue = 2) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(Math.min(value, 100), minValue);
+}
+
+function renderMetricBars(metrics, config = {}) {
+  const numeric = metrics.filter((metric) => typeof metric.value === "number");
+  if (!numeric.length) return renderMetricCards(metrics);
+  const maxValue = metricBarMaxValue(numeric, config);
+  return `<div class="metric-bars">
+    ${metrics.map((metric) => metricBarRow(metric, maxValue, config)).join("")}
+  </div>`;
+}
+
+function metricBarRow(metric, maxValue, config = {}) {
+  const label = metric.label || metric.metric_id;
+  const description = metric.description || "";
+  if (typeof metric.value !== "number") {
+    return `
+      <div class="metric-bar-row text" title="${escapeHtml(description)}">
+        <div class="metric-bar-main">
+          <span>${escapeHtml(label)}</span>
+          <strong class="metric-bar-meta">${escapeHtml(metricValueText(metric))}</strong>
+        </div>
+        <div class="metric-actions">
+          ${detailActionButton(metricDetailPayload(metric))}
+        </div>
+      </div>
+    `;
+  }
+  const magnitude = metricBarMagnitude(metric, config);
+  const width = clampPercent((magnitude / maxValue) * 100, config.min_percent ?? 2);
+  return `
+    <div class="metric-bar-row" title="${escapeHtml(description)}">
+      <div class="metric-bar-main">
+        <div class="metric-bar-head">
+          <span>${escapeHtml(label)}</span>
+          <strong>${escapeHtml(metricValueText(metric))}</strong>
+        </div>
+        <div class="metric-bar-track">
+          <div class="metric-bar-fill ${escapeHtml(metricBarKind(metric))}" style="width: ${width}%"></div>
+        </div>
+      </div>
+      <div class="metric-actions">
+        ${detailActionButton(metricDetailPayload(metric))}
+      </div>
+    </div>
+  `;
+}
+
+function metricBarMaxValue(metrics, config = {}) {
+  if (typeof config.max === "number" && config.max > 0) return config.max;
+  return Math.max(...metrics.map((metric) => metricBarMagnitude(metric, config)), 1);
+}
+
+function metricBarMagnitude(metric, config = {}) {
+  const value = Math.abs(Number(metric.value) || 0);
+  if (metricBarKind(metric) === "bounded" && config.value_scale !== "raw") return value * 100;
+  return value;
+}
+
+function metricBarKind(metric) {
+  if (["ratio", "score", "variance"].includes(metric.unit) && Math.abs(Number(metric.value) || 0) <= 1) {
+    return "bounded";
+  }
+  return "magnitude";
+}
+
+function renderMetricHistogram(metrics) {
+  const numeric = metrics.filter((metric) => typeof metric.value === "number");
+  if (!numeric.length) return renderMetricCards(metrics);
+  const maxValue = Math.max(...numeric.map((metric) => Math.abs(metric.value)), 1);
+  return `<div class="metric-histogram">
+    ${numeric.map((metric) => {
+      const width = Math.max(Math.abs(metric.value) / maxValue * 100, 2);
+      return `
+        <div class="metric-histogram-row" title="${escapeHtml(metric.description || "")}">
+          <span>${escapeHtml(metric.label || metric.metric_id)}</span>
+          <div class="metric-histogram-track">
+            <div class="metric-histogram-bar" style="width: ${width}%"></div>
+          </div>
+          <strong>${escapeHtml(metricValueText(metric))}</strong>
+          <div class="metric-actions">
+            ${detailActionButton(metricDetailPayload(metric))}
+          </div>
+        </div>
+      `;
+    }).join("")}
+  </div>`;
+}
+
+function renderMetricEvents(events) {
+  if (!events.length) return '<p class="empty">Metric events are available after session detail loads.</p>';
+  return events.map((event) => {
+    return `
+      <div class="metric-event">
+        <div class="metric-main">
+          <strong>${escapeHtml(event.name || "metric.event")}</strong>
+          <code>${escapeHtml(metricEventValueText(event))}</code>
+        </div>
+        <div class="metric-actions">
+          ${detailActionButton(eventDetailPayload(event))}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function metricEventValueText(event) {
+  const unit = event.unit && event.unit !== "count" ? ` ${event.unit}` : "";
+  const value = event.value;
+  if (typeof value === "number") {
+    if (Number.isInteger(value)) return `${fmt.format(value)}${unit}`;
+    return `${fmt.format(Math.round(value * 10000) / 10000)}${unit}`;
+  }
+  return `${value ?? "unknown"}${unit}`;
+}
+
+function metricValueText(metric) {
+  const value = metric.value;
+  const unit = metric.unit && !["count", "class"].includes(metric.unit) ? ` ${metric.unit}` : "";
+  if (value === "unknown") return "unknown";
+  if (typeof value === "number") {
+    if (metric.unit === "ratio") return pct(value);
+    if (Number.isInteger(value)) return `${fmt.format(value)}${unit}`;
+    return `${fmt.format(Math.round(value * 10000) / 10000)}${unit}`;
+  }
+  return `${value ?? "unknown"}${unit}`;
+}
+
+function detailActionButton(payload) {
+  const id = `detail-${++detailActionSequence}`;
+  detailActionPayloads.set(id, payload);
+  const label = `View details for ${payload.title || "metric"}`;
+  return `<div class="metric-action-box">
+    <button class="detail-action-button" type="button" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" data-detail-action-id="${escapeHtml(id)}">View</button>
+  </div>`;
+}
+
+function groupDetailPayload(group) {
+  return {
+    title: group.label || group.group_id,
+    subtitle: `Metric group · ${fmt.format((group.metrics || []).length)} metrics`,
+    rows: [
+      ["Group ID", group.group_id || "unknown"],
+      ["Display", (group.display || {}).kind || "cards"],
+      ["Metrics", (group.metrics || []).map((metric) => metric.metric_id).join(", ") || "none"]
+    ]
+  };
+}
+
+function metricDetailPayload(metric) {
+  return {
+    title: metric.label || metric.metric_id,
+    subtitle: `Metric · ${metric.metric_id || "unknown"}`,
+    rows: [
+      ["Value", metricValueText(metric)],
+      ["Unit", metric.unit || "count"],
+      ["Description", metric.description || "No description captured."],
+      ["Labels", metricLabelsText(metric.labels)],
+      ["Inputs", (metric.inputs || []).join(", ") || "none"],
+      ["Formula", metric.formula || "direct event value"]
+    ]
+  };
+}
+
+function metricLabelsText(labels) {
+  const entries = Object.entries(labels || {}).filter(([, value]) => value !== null && value !== undefined && value !== "");
+  if (!entries.length) return "none";
+  return entries.map(([key, value]) => `${key}=${value}`).join(", ");
+}
+
+function genericMetricDetailPayload(label, value) {
+  return {
+    title: label || "Metric",
+    subtitle: "Metric",
+    rows: [
+      ["Value", value ?? "unknown"],
+      ["Inputs", "derived from the current selected observation"],
+      ["Formula", "direct dashboard field"]
+    ]
+  };
+}
+
+function eventDetailPayload(event) {
+  const labels = Object.entries(event.labels || {}).map(([key, value]) => `${key}=${value}`).join(", ");
+  const meta = [event.category, event.timestamp, labels].filter(Boolean).join(" · ");
+  return {
+    title: event.name || "metric.event",
+    subtitle: `Event · ${event.category || "general"}`,
+    rows: [
+      ["Value", metricEventValueText(event)],
+      ["Unit", event.unit || "count"],
+      ["Category", event.category || "general"],
+      ["Timestamp", event.timestamp || "none"],
+      ["Labels", labels || "none"],
+      ["Summary", meta || "No additional metadata captured."]
+    ]
+  };
+}
+
+function showDetailModal(payload) {
+  document.getElementById("detail-modal-title").textContent = payload.title || "Details";
+  document.getElementById("detail-modal-subtitle").textContent = payload.subtitle || "";
+  document.getElementById("detail-modal-body").innerHTML = detailRowsHtml(payload.rows || []);
+  document.getElementById("detail-modal").classList.remove("is-hidden");
+}
+
+function hideDetailModal() {
+  document.getElementById("detail-modal").classList.add("is-hidden");
+}
+
+function detailRowsHtml(rows) {
+  return rows.map(([label, value]) => `
+    <div class="detail-modal-row">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+    </div>
+  `).join("");
 }
 
 function relatedBenchmarkList(session) {
@@ -571,29 +820,6 @@ function benchmarkSessions(run) {
   });
 }
 
-function renderSessionComplexityChart(session) {
-  const complexity = session.complexity || {};
-  const chart = getChart("session-complexity-chart");
-  chart.setOption({
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { left: 52, right: 22, top: 22, bottom: 42 },
-    xAxis: { type: "category", data: ["Intrinsic", "Effective", "Chaos", "Absorption"] },
-    yAxis: { type: "value", name: "score" },
-    series: [
-      {
-        name: "Complexity",
-        type: "bar",
-        data: [
-          complexity.intrinsic_score || 0,
-          complexity.effective_score || 0,
-          complexity.chaos_score || 0,
-          complexity.model_absorption || 0
-        ]
-      }
-    ]
-  });
-}
-
 function renderSessionTokenGrowthChart(session) {
   const points = tokenGrowthPoints(session);
   const chart = getChart("session-token-growth-chart");
@@ -661,68 +887,6 @@ function timestampMs(value) {
   if (Number.isFinite(numeric) && String(value).trim() !== "") return numeric * 1000;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
-}
-
-function renderSessionTokenToolChart(session) {
-  const tokens = session.tokens || {};
-  const chart = getChart("session-token-tool-chart");
-  chart.setOption({
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { left: 62, right: 22, top: 22, bottom: 42 },
-    xAxis: { type: "category", data: ["Input", "Output", "Cached", "Tool Calls"] },
-    yAxis: { type: "value" },
-    series: [
-      {
-        name: "Count",
-        type: "bar",
-        data: [
-          tokens.input || 0,
-          tokens.output || 0,
-          tokens.cached_input || 0,
-          sumValues(session.tool_calls)
-        ]
-      }
-    ]
-  });
-}
-
-function renderBenchmarkQualityChart(run) {
-  const chart = getChart("benchmark-quality-chart");
-  chart.setOption({
-    tooltip: { trigger: "axis", formatter: (items) => items.map((item) => `${item.marker}${item.name}: ${pct(item.value)}`).join("<br>") },
-    grid: { left: 52, right: 22, top: 22, bottom: 42 },
-    xAxis: { type: "category", data: ["Completion", "Quality"] },
-    yAxis: { type: "value", min: 0, max: 1, axisLabel: { formatter: (value) => pct(value) } },
-    series: [
-      {
-        name: "Rate",
-        type: "bar",
-        data: [run.completion_rate || 0, run.average_quality_score || 0]
-      }
-    ]
-  });
-}
-
-function renderBenchmarkCostChart(run) {
-  const chart = getChart("benchmark-cost-chart");
-  chart.setOption({
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    grid: { left: 72, right: 22, top: 22, bottom: 42 },
-    xAxis: { type: "category", data: ["Tokens", "Tools", "Duration", "Lines"] },
-    yAxis: { type: "value" },
-    series: [
-      {
-        name: "Cost",
-        type: "bar",
-        data: [
-          run.total_tokens || 0,
-          run.total_tool_calls || 0,
-          run.total_duration_seconds || 0,
-          run.total_lines_changed || 0
-        ]
-      }
-    ]
-  });
 }
 
 async function refreshAllSources() {

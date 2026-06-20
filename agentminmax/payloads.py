@@ -53,6 +53,7 @@ def session_summary_payload(session: AgentSession) -> dict[str, Any]:
         "benchmarks": [asdict(result) for result in session.benchmarks],
         "code": asdict(session.code),
         "complexity": asdict(session.complexity) if session.complexity else None,
+        "metric_groups": [asdict(group) for group in session.metric_groups],
         "trace": _slim_trace(session.trace),
         "detail_json": session_detail_path(session),
     }
